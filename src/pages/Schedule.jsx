@@ -65,10 +65,18 @@ function DayColumn({ date, missions, machines, machineConflicts, personConflicts
 }
 
 export default function Schedule() {
-  const { missions, machines } = useApp();
+  const { missions, machines, personView } = useApp();
   const [mode, setMode] = useState('week');
   const [refDate, setRefDate] = useState(todayIso());
 
+  const visibleMissions = useMemo(
+    () => (personView === 'Alla' ? missions : missions.filter((m) => m.responsible === personView)),
+    [missions, personView]
+  );
+
+  // Krockar räknas ut på alla uppdrag (en persons dubbelbokning berör bara
+  // den personen, men en maskinkrock kan involvera någon som är dold av
+  // personfiltret – varningen är ändå korrekt för de uppdrag som visas).
   const machineConflicts = useMemo(() => findMachineConflicts(missions), [missions]);
   const personConflicts = useMemo(() => findPersonConflicts(missions), [missions]);
 
@@ -85,7 +93,10 @@ export default function Schedule() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Planering &amp; schema</h1>
+        <div>
+          <h1>Planering &amp; schema</h1>
+          <p className="page-subtitle">{personView === 'Alla' ? 'Bertil & Ove' : `Vy: ${personView}`}</p>
+        </div>
         <div className="schedule-controls">
           <div className="view-toggle">
             <button type="button" className={mode === 'day' ? 'active' : ''} onClick={() => setMode('day')}>Dag</button>
@@ -110,7 +121,7 @@ export default function Schedule() {
           <div className="schedule-grid schedule-grid-day">
             <DayColumn
               date={refDate}
-              missions={missions}
+              missions={visibleMissions}
               machines={machines}
               machineConflicts={machineConflicts}
               personConflicts={personConflicts}
@@ -124,7 +135,7 @@ export default function Schedule() {
             <DayColumn
               key={date}
               date={date}
-              missions={missions}
+              missions={visibleMissions}
               machines={machines}
               machineConflicts={machineConflicts}
               personConflicts={personConflicts}
