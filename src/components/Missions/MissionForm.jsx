@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MISSION_TYPES, MISSION_STATUSES, USERS, WORKDAY_START, WORKDAY_END } from '../../lib/constants.js';
+import { findOverlappingMissionForPerson } from '../../lib/conflicts.js';
 
 const EMPTY = {
   title: '',
@@ -15,7 +16,7 @@ const EMPTY = {
   notes: '',
 };
 
-export default function MissionForm({ initial, onCancel, onSubmit, submitLabel = 'Spara' }) {
+export default function MissionForm({ initial, onCancel, onSubmit, submitLabel = 'Spara', missions = [], excludeId = null }) {
   const [form, setForm] = useState(() => ({ ...EMPTY, ...initial }));
   const [error, setError] = useState('');
 
@@ -32,6 +33,13 @@ export default function MissionForm({ initial, onCancel, onSubmit, submitLabel =
     const lon = Number(form.lon);
     if (Number.isNaN(lat) || Number.isNaN(lon)) return setError('Ange giltiga koordinater (lat, lon).');
     if (form.startTime >= form.endTime) return setError('Sluttid måste vara efter starttid.');
+
+    const clash = findOverlappingMissionForPerson(missions, form, excludeId);
+    if (clash) {
+      return setError(
+        `${form.responsible} är redan bokad ${clash.startTime}–${clash.endTime} på "${clash.title}" samma dag. Ändra tid, dag eller ansvarig.`
+      );
+    }
 
     onSubmit({ ...form, lat, lon });
   }

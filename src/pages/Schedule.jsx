@@ -3,36 +3,10 @@ import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import StatusBadge from '../components/common/StatusBadge.jsx';
 import { MACHINE_TYPE_ICONS } from '../lib/constants.js';
-import { addDays, formatDateLong, formatDateShort, startOfWeek, timesOverlap, toIso, todayIso, weekdayName } from '../lib/dateUtils.js';
+import { findMachineConflicts, findPersonConflicts } from '../lib/conflicts.js';
+import { addDays, formatDateLong, formatDateShort, startOfWeek, toIso, todayIso, weekdayName } from '../lib/dateUtils.js';
 
-function findConflicts(missions) {
-  const conflicts = new Set();
-  const byMachine = {};
-
-  for (const mission of missions) {
-    for (const machineId of mission.machineIds || []) {
-      if (!byMachine[machineId]) byMachine[machineId] = [];
-      byMachine[machineId].push(mission);
-    }
-  }
-
-  for (const machineMissions of Object.values(byMachine)) {
-    for (let i = 0; i < machineMissions.length; i++) {
-      for (let j = i + 1; j < machineMissions.length; j++) {
-        const a = machineMissions[i];
-        const b = machineMissions[j];
-        if (a.date === b.date && timesOverlap(a.startTime, a.endTime, b.startTime, b.endTime)) {
-          conflicts.add(a.id);
-          conflicts.add(b.id);
-        }
-      }
-    }
-  }
-
-  return conflicts;
-}
-
-function DayColumn({ date, missions, machines, conflicts, highlight }) {
+function DayColumn({ date, missions, machines, machineConflicts, personConflicts, highlight }) {
   const dayMissions = missions
     .filter((m) => m.date === date)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
@@ -47,36 +21,43 @@ function DayColumn({ date, missions, machines, conflicts, highlight }) {
         <p className="empty-hint">Inga uppdrag.</p>
       ) : (
         <div className="schedule-mission-list">
-          {dayMissions.map((mission) => (
-            <Link
-              key={mission.id}
-              to={`/uppdrag/${mission.id}`}
-              className={'schedule-mission' + (conflicts.has(mission.id) ? ' schedule-conflict' : '')}
-            >
-              <div className="schedule-mission-time">{mission.startTime}–{mission.endTime}</div>
-              <div className="schedule-mission-title">{mission.title}</div>
-              <div className="schedule-mission-meta">
-                <StatusBadge status={mission.status} />
-                <span>{mission.responsible}</span>
-              </div>
-              {(mission.machineIds || []).length > 0 && (
-                <div className="schedule-mission-machines">
-                  {mission.machineIds.map((id) => {
-                    const machine = machines.find((m) => m.id === id);
-                    if (!machine) return null;
-                    return (
-                      <span key={id} className="schedule-machine-chip">
-                        {MACHINE_TYPE_ICONS[machine.type]} {machine.name}
-                      </span>
-                    );
-                  })}
+          {dayMissions.map((mission) => {
+            const hasMachineConflict = machineConflicts.has(mission.id);
+            const hasPersonConflict = personConflicts.has(mission.id);
+            return (
+              <Link
+                key={mission.id}
+                to={`/uppdrag/${mission.id}`}
+                className={'schedule-mission' + (hasMachineConflict || hasPersonConflict ? ' schedule-conflict' : '')}
+              >
+                <div className="schedule-mission-time">{mission.startTime}–{mission.endTime}</div>
+                <div className="schedule-mission-title">{mission.title}</div>
+                <div className="schedule-mission-meta">
+                  <StatusBadge status={mission.status} />
+                  <span>{mission.responsible}</span>
                 </div>
-              )}
-              {conflicts.has(mission.id) && (
-                <div className="schedule-conflict-warning">⚠ Maskinkrock – dubbelbokad tid</div>
-              )}
-            </Link>
-          ))}
+                {(mission.machineIds || []).length > 0 && (
+                  <div className="schedule-mission-machines">
+                    {mission.machineIds.map((id) => {
+                      const machine = machines.find((m) => m.id === id);
+                      if (!machine) return null;
+                      return (
+                        <span key={id} className="schedule-machine-chip">
+                          {MACHINE_TYPE_ICONS[machine.type]} {machine.name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {hasPersonConflict && (
+                  <div className="schedule-conflict-warning">⚠ {mission.responsible} är dubbelbokad – överlappande tid</div>
+                )}
+                {hasMachineConflict && (
+                  <div className="schedule-conflict-warning">⚠ Maskinkrock – dubbelbokad tid</div>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
@@ -88,7 +69,8 @@ export default function Schedule() {
   const [mode, setMode] = useState('week');
   const [refDate, setRefDate] = useState(todayIso());
 
-  const conflicts = useMemo(() => findConflicts(missions), [missions]);
+  const machineConflicts = useMemo(() => findMachineConflicts(missions), [missions]);
+  const personConflicts = useMemo(() => findPersonConflicts(missions), [missions]);
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(new Date(`${refDate}T00:00:00`));
@@ -115,9 +97,10 @@ export default function Schedule() {
         </div>
       </div>
 
-      {conflicts.size > 0 && (
+      {(personConflicts.size > 0 || machineConflicts.size > 0) && (
         <div className="form-error">
-          ⚠ {conflicts.size} uppdrag har krockande maskinbokningar denna period – se markerade kort nedan.
+          {personConflicts.size > 0 && <div>⚠ {personConflicts.size} uppdrag har en person dubbelbokad på överlappande tid.</div>}
+          {machineConflicts.size > 0 && <div>⚠ {machineConflicts.size} uppdrag har krockande maskinbokningar denna period.</div>}
         </div>
       )}
 
@@ -125,7 +108,14 @@ export default function Schedule() {
         <>
           <h2 className="schedule-single-day-title">{formatDateLong(refDate)}</h2>
           <div className="schedule-grid schedule-grid-day">
-            <DayColumn date={refDate} missions={missions} machines={machines} conflicts={conflicts} highlight={refDate === todayIso()} />
+            <DayColumn
+              date={refDate}
+              missions={missions}
+              machines={machines}
+              machineConflicts={machineConflicts}
+              personConflicts={personConflicts}
+              highlight={refDate === todayIso()}
+            />
           </div>
         </>
       ) : (
@@ -136,7 +126,8 @@ export default function Schedule() {
               date={date}
               missions={missions}
               machines={machines}
-              conflicts={conflicts}
+              machineConflicts={machineConflicts}
+              personConflicts={personConflicts}
               highlight={date === todayIso()}
             />
           ))}

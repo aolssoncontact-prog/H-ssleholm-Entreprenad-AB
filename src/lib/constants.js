@@ -6,6 +6,9 @@ export const OFFICE_FALLBACK_COORDS = { lat: 56.0596, lon: 13.7668 };
 
 export const USERS = ['Bertil', 'Ove'];
 
+// De tre vyerna för att växla vem man tittar på: alla, eller en specifik person.
+export const PERSON_VIEWS = ['Alla', ...USERS];
+
 export const MISSION_TYPES = [
   'Schaktarbete',
   '3-kammarbrunn',

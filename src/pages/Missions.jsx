@@ -90,7 +90,12 @@ export default function Missions() {
 
       {showForm && (
         <Modal title="Nytt uppdrag" onClose={() => setShowForm(false)}>
-          <MissionForm onCancel={() => setShowForm(false)} onSubmit={handleCreate} submitLabel="Skapa uppdrag" />
+          <MissionForm
+            onCancel={() => setShowForm(false)}
+            onSubmit={handleCreate}
+            submitLabel="Skapa uppdrag"
+            missions={missions}
+          />
         </Modal>
       )}
     </div>

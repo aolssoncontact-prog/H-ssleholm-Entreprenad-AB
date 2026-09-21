@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { repository } from '../lib/storage.js';
 import { seedIfNeeded } from '../lib/seed.js';
 import { ensureOfficeLocation } from '../lib/office.js';
-import { USERS } from '../lib/constants.js';
+import { PERSON_VIEWS } from '../lib/constants.js';
 
 const AppContext = createContext(null);
 
@@ -11,7 +11,7 @@ export function AppProvider({ children }) {
   const [office, setOffice] = useState(null);
   const [missions, setMissions] = useState([]);
   const [machines, setMachines] = useState([]);
-  const [currentUser, setCurrentUserState] = useState(USERS[0]);
+  const [personView, setPersonViewState] = useState(PERSON_VIEWS[0]);
 
   useEffect(() => {
     let cancelled = false;
@@ -22,15 +22,15 @@ export function AppProvider({ children }) {
 
       await seedIfNeeded(repository, officeLocation);
 
-      const [savedMissions, savedMachines, savedUser] = await Promise.all([
+      const [savedMissions, savedMachines, savedView] = await Promise.all([
         repository.getMissions(),
         repository.getMachines(),
-        repository.getCurrentUser(),
+        repository.getPersonView(),
       ]);
       if (cancelled) return;
       setMissions(savedMissions);
       setMachines(savedMachines);
-      setCurrentUserState(savedUser || USERS[0]);
+      setPersonViewState(PERSON_VIEWS.includes(savedView) ? savedView : PERSON_VIEWS[0]);
       setLoading(false);
     }
     init();
@@ -39,9 +39,9 @@ export function AppProvider({ children }) {
     };
   }, []);
 
-  const setCurrentUser = useCallback((user) => {
-    setCurrentUserState(user);
-    repository.setCurrentUser(user);
+  const setPersonView = useCallback((view) => {
+    setPersonViewState(view);
+    repository.setPersonView(view);
   }, []);
 
   const saveMission = useCallback(async (mission) => {
@@ -83,13 +83,13 @@ export function AppProvider({ children }) {
       office,
       missions,
       machines,
-      currentUser,
-      setCurrentUser,
+      personView,
+      setPersonView,
       saveMission,
       deleteMission,
       saveMachine,
     }),
-    [loading, office, missions, machines, currentUser, setCurrentUser, saveMission, deleteMission, saveMachine]
+    [loading, office, missions, machines, personView, setPersonView, saveMission, deleteMission, saveMachine]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

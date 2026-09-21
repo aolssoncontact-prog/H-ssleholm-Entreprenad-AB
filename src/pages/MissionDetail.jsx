@@ -272,6 +272,8 @@ export default function MissionDetail() {
             onCancel={() => setEditing(false)}
             onSubmit={handleUpdate}
             submitLabel="Spara ändringar"
+            missions={missions}
+            excludeId={mission.id}
           />
         </Modal>
       )}

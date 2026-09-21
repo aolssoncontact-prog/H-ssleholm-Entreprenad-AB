@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useApp } from '../../context/AppContext.jsx';
-import { USERS } from '../../lib/constants.js';
+import { PERSON_VIEWS } from '../../lib/constants.js';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Översikt', icon: '🏠', end: true },
@@ -11,7 +11,7 @@ const NAV_ITEMS = [
 ];
 
 export default function Layout() {
-  const { currentUser, setCurrentUser, office } = useApp();
+  const { personView, setPersonView, office } = useApp();
 
   return (
     <div className="app-shell">
@@ -41,14 +41,14 @@ export default function Layout() {
         </nav>
 
         <div className="user-switcher">
-          {USERS.map((user) => (
+          {PERSON_VIEWS.map((view) => (
             <button
-              key={user}
+              key={view}
               type="button"
-              className={'user-pill' + (currentUser === user ? ' active' : '')}
-              onClick={() => setCurrentUser(user)}
+              className={'user-pill' + (personView === view ? ' active' : '')}
+              onClick={() => setPersonView(view)}
             >
-              {user}
+              {view}
             </button>
           ))}
         </div>

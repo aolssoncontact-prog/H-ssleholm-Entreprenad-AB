@@ -7,11 +7,11 @@
 // bara innehållet i den här filen.
 
 const KEYS = {
-  missions: 'hea_missions_v1',
-  machines: 'hea_machines_v1',
-  currentUser: 'hea_current_user_v1',
+  missions: 'hea_missions_v2',
+  machines: 'hea_machines_v2',
+  personView: 'hea_person_view_v1',
   office: 'hea_office_location_v1',
-  seeded: 'hea_seeded_v1',
+  seeded: 'hea_seeded_v2',
 };
 
 function readJson(key, fallback) {
@@ -71,11 +71,11 @@ export const repository = {
     return machine;
   },
 
-  async getCurrentUser() {
-    return readJson(KEYS.currentUser, null);
+  async getPersonView() {
+    return readJson(KEYS.personView, null);
   },
-  async setCurrentUser(user) {
-    writeJson(KEYS.currentUser, user);
+  async setPersonView(view) {
+    writeJson(KEYS.personView, view);
   },
 
   async getOfficeLocation() {

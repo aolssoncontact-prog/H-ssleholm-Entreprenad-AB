@@ -1065,6 +1065,101 @@ a {
   color: var(--color-danger);
 }
 
+/* ---------- Route schedule (Översikt) ---------- */
+
+.route-schedule-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.route-card {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.route-card h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.route-card-count {
+  font-weight: 400;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.route-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.route-leg {
+  padding: 4px 0 4px 19px;
+  min-height: 18px;
+}
+
+.route-leg-text {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.route-stop {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+}
+
+.route-stop-office {
+  background: #f8fafc;
+  border-style: dashed;
+}
+
+.route-stop-icon {
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.route-stop-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.route-stop-time {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.route-stop-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin: 2px 0;
+}
+
+.route-stop-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
 /* ---------- Responsive: tablet & desktop ---------- */
 
 @media (min-width: 720px) {
@@ -1081,6 +1176,10 @@ a {
   }
 
   .machine-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .route-schedule-grid:not(.route-schedule-single) {
     grid-template-columns: repeat(2, 1fr);
   }
 
