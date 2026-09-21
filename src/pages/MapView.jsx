@@ -5,6 +5,7 @@ import L from 'leaflet';
 import { useApp } from '../context/AppContext.jsx';
 import { missionIcon, machineIcon, officeIcon } from '../components/Map/icons.js';
 import RouteArrows from '../components/Map/RouteArrows.jsx';
+import MapAutoSize from '../components/Map/MapAutoSize.jsx';
 import StatusBadge from '../components/common/StatusBadge.jsx';
 import { fetchOptimizedOrder, fetchDirections } from '../lib/ors.js';
 import { formatDistance, formatDuration } from '../lib/geo.js';
@@ -47,6 +48,13 @@ export default function MapView() {
     machines.forEach((m) => pts.push({ lat: m.lat, lon: m.lon }));
     return pts;
   }, [office, activeMissions, machines]);
+
+  // Efter en optimering vet vi i vilken ordning uppdragen ska köras till –
+  // det numret visas som en liten bricka på respektive markör.
+  const orderByMissionId = useMemo(() => {
+    if (!routeInfo?.order) return {};
+    return Object.fromEntries(routeInfo.order.map((m, i) => [m.id, i + 1]));
+  }, [routeInfo]);
 
   useEffect(() => {
     setRouteInfo(null);
@@ -141,6 +149,7 @@ export default function MapView() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <FitBounds points={allPoints} />
+          <MapAutoSize />
 
           <Marker position={[office.lat, office.lon]} icon={officeIcon()}>
             <Popup>
@@ -154,7 +163,7 @@ export default function MapView() {
             <Marker
               key={mission.id}
               position={[mission.lat, mission.lon]}
-              icon={missionIcon(mission)}
+              icon={missionIcon(mission, orderByMissionId[mission.id] ?? null)}
               eventHandlers={{ click: () => navigate(`/uppdrag/${mission.id}`) }}
             >
               <Popup>

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import { missionIcon, officeIcon } from '../Map/icons.js';
 import RouteArrows from '../Map/RouteArrows.jsx';
+import MapAutoSize from '../Map/MapAutoSize.jsx';
 import { fetchDirections } from '../../lib/ors.js';
 
 const PERSON_COLORS = {
@@ -73,6 +74,15 @@ export default function DashboardRouteMap({ missions, office, peopleToShow }) {
     ? [office, ...allMissions.map((m) => ({ lat: m.lat, lon: m.lon }))]
     : allMissions.map((m) => ({ lat: m.lat, lon: m.lon }));
 
+  // Ordningen uppdragen ska köras till under dagen – ett nummer per person
+  // (räknat från deras schemalagda starttid), oberoende av de andras.
+  const orderByMissionId = {};
+  for (const person of peopleToShow) {
+    byPerson[person].forEach((m, i) => {
+      orderByMissionId[m.id] = i + 1;
+    });
+  }
+
   if (!office) return null;
 
   return (
@@ -84,6 +94,7 @@ export default function DashboardRouteMap({ missions, office, peopleToShow }) {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <FitBounds points={allPoints} />
+          <MapAutoSize />
 
           <Marker position={[office.lat, office.lon]} icon={officeIcon()}>
             <Popup>
@@ -97,7 +108,7 @@ export default function DashboardRouteMap({ missions, office, peopleToShow }) {
             <Marker
               key={mission.id}
               position={[mission.lat, mission.lon]}
-              icon={missionIcon(mission)}
+              icon={missionIcon(mission, orderByMissionId[mission.id] ?? null)}
               eventHandlers={{ click: () => navigate(`/uppdrag/${mission.id}`) }}
             >
               <Popup>
