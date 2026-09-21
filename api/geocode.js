@@ -1,8 +1,15 @@
 import { getApiKey, orsFetch, allowCors } from './_lib/ors.js';
 
-// GET /api/geocode?text=Norra+Kringelvägen+70,+Hässleholm            (adress -> koordinater, ett resultat)
-// GET /api/geocode?text=Norra+Kring&autocomplete=1&size=5             (adress -> flera förslag, medan man skriver)
-// GET /api/geocode?lat=56.05&lon=13.76                                (koordinater -> adress)
+// GET /api/geocode?text=Norra+Kringelvägen+70,+Hässleholm   (adress -> koordinater, ett resultat)
+// GET /api/geocode?text=Norra+Kring&size=5                   (adress -> flera förslag, medan man skriver)
+// GET /api/geocode?lat=56.05&lon=13.76                        (koordinater -> adress)
+//
+// Vi använder alltid /geocode/search (fullständig strukturerad
+// adressparsning via libpostal), inte /geocode/autocomplete. Autocomplete
+// är byggt för korta, ostrukturerade textprefix medan search klarar
+// kompletta adresser med gatunummer, postnummer och ort mycket bättre –
+// annars missas riktiga, existerande adresser (visas som "hittades inte"
+// trots att adressen är korrekt).
 export default async function handler(req, res) {
   if (allowCors(req, res)) return;
   if (req.method !== 'GET') {
@@ -13,12 +20,11 @@ export default async function handler(req, res) {
   const apiKey = getApiKey(res);
   if (!apiKey) return;
 
-  const { text, lat, lon, autocomplete, size } = req.query || {};
+  const { text, lat, lon, size } = req.query || {};
 
   try {
     if (text) {
-      const path = autocomplete ? '/geocode/autocomplete' : '/geocode/search';
-      const { ok, status, data } = await orsFetch(path, {
+      const { ok, status, data } = await orsFetch('/geocode/search', {
         method: 'GET',
         apiKey,
         query: { text, size: size || 1, 'boundary.country': 'SE' },

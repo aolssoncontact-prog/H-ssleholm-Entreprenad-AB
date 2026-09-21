@@ -735,7 +735,7 @@ a {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  z-index: 100;
+  z-index: 1200;
 }
 
 .modal {
@@ -1126,6 +1126,11 @@ a {
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
+  /* Leaflets interna lager/kontroller använder höga z-index-värden
+     (upp till 1000). Utan detta kan kartan "lysa igenom" ovanpå t.ex.
+     modaler som ligger senare i DOM:en men har lägre z-index. */
+  isolation: isolate;
+  position: relative;
 }
 
 .dashboard-map-wrap {

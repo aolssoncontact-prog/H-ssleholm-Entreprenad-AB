@@ -54,9 +54,12 @@ export default function DashboardRouteMap({ missions, office, peopleToShow }) {
           const waypoints = [office, ...list.map((m) => ({ lat: m.lat, lon: m.lon })), office];
           try {
             const res = await fetchDirections(waypoints);
-            return [person, { geometry: res.geometry }];
+            return [person, { geometry: res.geometry, estimated: false }];
           } catch {
-            return [person, null];
+            // Kunde inte hämta en riktig väg (t.ex. saknad ORS_API_KEY i
+            // produktion) – rita en rak, streckad linje mellan stoppen
+            // istället för att inte visa något alls.
+            return [person, { geometry: waypoints.map((p) => [p.lat, p.lon]), estimated: true }];
           }
         })
       );
@@ -127,21 +130,30 @@ export default function DashboardRouteMap({ missions, office, peopleToShow }) {
             const color = PERSON_COLORS[person] || '#1e3a5f';
             return (
               <Fragment key={person}>
-                <Polyline positions={route.geometry} pathOptions={{ color, weight: 5, opacity: 0.8 }} />
-                <RouteArrows geometry={route.geometry} color={color} count={5} />
+                <Polyline
+                  positions={route.geometry}
+                  pathOptions={{ color, weight: 5, opacity: 0.8, dashArray: route.estimated ? '2 10' : null }}
+                />
+                <RouteArrows geometry={route.geometry} color={color} count={route.estimated ? 1 : 5} />
               </Fragment>
             );
           })}
         </MapContainer>
       </div>
 
-      {peopleToShow.length > 1 && (
+      {(peopleToShow.length > 1 || Object.values(routes).some((r) => r?.estimated)) && (
         <div className="map-legend">
-          {peopleToShow.map((person) => (
-            <span key={person} className="legend-item">
-              <span className="legend-dot" style={{ background: PERSON_COLORS[person] || '#1e3a5f' }} /> {person}s rutt
+          {peopleToShow.length > 1 &&
+            peopleToShow.map((person) => (
+              <span key={person} className="legend-item">
+                <span className="legend-dot" style={{ background: PERSON_COLORS[person] || '#1e3a5f' }} /> {person}s rutt
+              </span>
+            ))}
+          {Object.values(routes).some((r) => r?.estimated) && (
+            <span className="legend-item text-error">
+              ⚠ Prickad linje = fågelvägen (kunde inte hämta verklig körväg)
             </span>
-          ))}
+          )}
         </div>
       )}
     </div>
