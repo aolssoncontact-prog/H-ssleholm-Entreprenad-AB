@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import { useApp } from '../context/AppContext.jsx';
 import { missionIcon, machineIcon, officeIcon } from '../components/Map/icons.js';
+import RouteArrows from '../components/Map/RouteArrows.jsx';
 import StatusBadge from '../components/common/StatusBadge.jsx';
 import { fetchOptimizedOrder, fetchDirections } from '../lib/ors.js';
 import { formatDistance, formatDuration } from '../lib/geo.js';
@@ -30,18 +31,22 @@ export default function MapView() {
   const [optimizeError, setOptimizeError] = useState('');
   const [routeInfo, setRouteInfo] = useState(null); // { geometry, distanceMeters, durationSeconds, order, person }
 
+  // Kartan visar bara pågående eller kommande uppdrag – redan klara
+  // uppdrag är inte relevanta för dagens körplanering.
+  const activeMissions = useMemo(() => missions.filter((m) => m.status !== 'Klart'), [missions]);
+
   const missionsForDate = useMemo(
-    () => missions.filter((m) => m.date === date && m.responsible === person),
-    [missions, date, person]
+    () => activeMissions.filter((m) => m.date === date && m.responsible === person),
+    [activeMissions, date, person]
   );
 
   const allPoints = useMemo(() => {
     const pts = [];
     if (office) pts.push(office);
-    missions.forEach((m) => pts.push({ lat: m.lat, lon: m.lon }));
+    activeMissions.forEach((m) => pts.push({ lat: m.lat, lon: m.lon }));
     machines.forEach((m) => pts.push({ lat: m.lat, lon: m.lon }));
     return pts;
-  }, [office, missions, machines]);
+  }, [office, activeMissions, machines]);
 
   useEffect(() => {
     setRouteInfo(null);
@@ -145,7 +150,7 @@ export default function MapView() {
             </Popup>
           </Marker>
 
-          {missions.map((mission) => (
+          {activeMissions.map((mission) => (
             <Marker
               key={mission.id}
               position={[mission.lat, mission.lon]}
@@ -179,7 +184,10 @@ export default function MapView() {
           ))}
 
           {routeInfo?.geometry && (
-            <Polyline positions={routeInfo.geometry} pathOptions={{ color: '#1e3a5f', weight: 5, opacity: 0.85 }} />
+            <>
+              <Polyline positions={routeInfo.geometry} pathOptions={{ color: '#1e3a5f', weight: 5, opacity: 0.85 }} />
+              <RouteArrows geometry={routeInfo.geometry} color="#1e3a5f" />
+            </>
           )}
         </MapContainer>
       </div>

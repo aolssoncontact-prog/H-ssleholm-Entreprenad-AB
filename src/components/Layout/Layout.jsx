@@ -4,10 +4,10 @@ import { PERSON_VIEWS } from '../../lib/constants.js';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Översikt', icon: '🏠', end: true },
+  { to: '/planering', label: 'Planering', icon: '🗓️' },
   { to: '/uppdrag', label: 'Uppdrag', icon: '📋' },
   { to: '/karta', label: 'Karta', icon: '🗺️' },
   { to: '/maskiner', label: 'Maskiner', icon: '🔧' },
-  { to: '/planering', label: 'Planering', icon: '🗓️' },
 ];
 
 export default function Layout() {

@@ -3,14 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import MissionCard from '../components/Missions/MissionCard.jsx';
 import PersonRouteSchedule from '../components/Dashboard/PersonRouteSchedule.jsx';
+import DashboardRouteMap from '../components/Dashboard/DashboardRouteMap.jsx';
 import MissionForm from '../components/Missions/MissionForm.jsx';
 import Modal from '../components/common/Modal.jsx';
-import { MACHINE_TYPE_ICONS, STATUS_COLORS, USERS } from '../lib/constants.js';
+import { STATUS_COLORS, USERS } from '../lib/constants.js';
 import { isToday, todayIso, formatDateLong } from '../lib/dateUtils.js';
 import { findPersonConflicts } from '../lib/conflicts.js';
 
 export default function Dashboard() {
-  const { missions, machines, office, personView, saveMission } = useApp();
+  const { missions, office, personView, saveMission } = useApp();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
 
@@ -70,10 +71,6 @@ export default function Dashboard() {
           <div className="stat-value stat-value-colored">{statusCounts['Klart'] || 0}</div>
           <div className="stat-label">Klara idag</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-value">{machines.filter((m) => m.status === 'Tillgänglig').length}</div>
-          <div className="stat-label">Lediga maskiner</div>
-        </div>
       </section>
 
       {personConflicts.size > 0 && (
@@ -82,6 +79,11 @@ export default function Dashboard() {
           <Link to="/planering">planeringen</Link> för detaljer.
         </div>
       )}
+
+      <section className="page-section">
+        <h2>Dagens körväg</h2>
+        <DashboardRouteMap missions={todaysMissions} office={office} peopleToShow={peopleToShow} />
+      </section>
 
       <section className="page-section">
         <h2>Rutt-schema – var, när och hur</h2>
@@ -103,26 +105,6 @@ export default function Dashboard() {
             ))}
           </div>
         )}
-      </section>
-
-      <section className="page-section">
-        <h2>Var maskinerna står</h2>
-        <div className="machine-grid">
-          {machines.map((machine) => (
-            <div key={machine.id} className="machine-mini-card">
-              <span className="machine-mini-icon" aria-hidden="true">
-                {MACHINE_TYPE_ICONS[machine.type] || '🔧'}
-              </span>
-              <div>
-                <div className="machine-mini-name">{machine.name}</div>
-                <div className="machine-mini-location">{machine.locationLabel}</div>
-              </div>
-              <span className={'machine-status-pill status-' + machine.status.toLowerCase().replace(/[^a-zåäö]/g, '')}>
-                {machine.status}
-              </span>
-            </div>
-          ))}
-        </div>
       </section>
 
       {showForm && (

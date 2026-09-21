@@ -123,6 +123,7 @@ export default function MissionForm({
   const preview = previewByPerson[form.responsible] || { status: 'idle' };
   const blocked = preview.status === 'blocked';
   const dateIssue = form.date ? nonWorkingDayReason(form.date) : null;
+  const addressConfirmed = form.lat != null && form.lon != null;
 
   return (
     <form className="mission-form" onSubmit={handleSubmit}>
@@ -261,7 +262,7 @@ export default function MissionForm({
 
       <div className="form-actions">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>Avbryt</button>
-        <button type="submit" className="btn btn-primary" disabled={submitting || blocked}>
+        <button type="submit" className="btn btn-primary" disabled={submitting || blocked || !addressConfirmed}>
           {submitting ? 'Kontrollerar…' : submitLabel}
         </button>
       </div>

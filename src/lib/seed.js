@@ -235,11 +235,36 @@ function makeSlot(category) {
     : { startTime: pick(AFTERNOON_STARTS), endTime: pick(AFTERNOON_ENDS) };
 }
 
+// Sannolikhet att försöka lägga ett halvdagsuppdrag på en dag personen
+// redan har ett (halvdags-)uppdrag på, istället för en helt ny dag. Ger
+// fler dagar med två uppdrag per person, vilket är bra för att visa
+// planeringslogiken i praktiken.
+const DOUBLE_UP_CHANCE = 0.45;
+
 // Hittar en arbetsdag och tid för `person` som inte krockar med det som
 // redan är inbokat (varken de fasta HERO/CLUSTER-uppdragen eller tidigare
 // slumpmässigt schemalagda uppdrag). Väljer bara bland faktiska
 // arbetsdagar (WORKING_DAYS) – aldrig helg eller röd dag.
-function scheduleMission(person, category, usedByPersonDate) {
+function scheduleMission(person, category, usedByPersonDate, usedDaysByPerson) {
+  if (category === 'half' && usedDaysByPerson[person].length > 0 && rng() < DOUBLE_UP_CHANCE) {
+    const candidateDays = usedDaysByPerson[person].filter(
+      (date) => (usedByPersonDate[`${person}|${date}`] || []).length === 1
+    );
+    if (candidateDays.length > 0) {
+      const date = pick(candidateDays);
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const slot = makeSlot('half');
+        const key = `${person}|${date}`;
+        const existing = usedByPersonDate[key] || [];
+        const conflict = existing.some((e) => timesOverlap(e.startTime, e.endTime, slot.startTime, slot.endTime));
+        if (!conflict) {
+          usedByPersonDate[key] = [...existing, slot];
+          return { date, ...slot };
+        }
+      }
+    }
+  }
+
   for (let attempt = 0; attempt < 80; attempt++) {
     const date = pick(WORKING_DAYS);
     const slot = makeSlot(category);
@@ -248,6 +273,7 @@ function scheduleMission(person, category, usedByPersonDate) {
     const conflict = existing.some((e) => timesOverlap(e.startTime, e.endTime, slot.startTime, slot.endTime));
     if (!conflict) {
       usedByPersonDate[key] = [...existing, slot];
+      if (!usedDaysByPerson[person].includes(date)) usedDaysByPerson[person].push(date);
       return { date, ...slot };
     }
   }
@@ -258,6 +284,7 @@ function scheduleMission(person, category, usedByPersonDate) {
     const conflict = existing.some((e) => timesOverlap(e.startTime, e.endTime, slot.startTime, slot.endTime));
     if (!conflict) {
       usedByPersonDate[key] = [...existing, slot];
+      if (!usedDaysByPerson[person].includes(date)) usedDaysByPerson[person].push(date);
       return { date, ...slot };
     }
   }
@@ -271,18 +298,28 @@ function statusForDate(dateStr) {
   return 'Planerat';
 }
 
-// Bygger ytterligare 18 fiktiva uppdrag runt Hässleholm, Kristianstad och
+const GENERATED_MISSION_COUNT = 28;
+
+// Bygger ytterligare 28 fiktiva uppdrag runt Hässleholm, Kristianstad och
 // Klippan (utöver de två i CLUSTER_MISSIONS), utspridda över ungefär tre
-// veckor med både förflutna, dagens och kommande arbetsdagar.
-function buildGeneratedMissions(usedByPersonDate) {
+// veckor med både förflutna, dagens och kommande arbetsdagar. Ungefär
+// varannan gång ett halvdagsuppdrag schemaläggs försöker det hamna samma
+// dag som personens andra uppdrag (se DOUBLE_UP_CHANCE), så flera dagar
+// får två uppdrag per person.
+function buildGeneratedMissions(usedByPersonDate, usedDaysByPerson) {
   const missions = [];
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < GENERATED_MISSION_COUNT; i++) {
     const town = TOWNS[i % TOWNS.length];
     const type = MISSION_TYPES[(i + 2) % MISSION_TYPES.length];
     const street = pick(STREETS[town.name]);
     const responsible = i % 2 === 0 ? 'Ove' : 'Bertil';
     const coords = jitterAround(town, 0.09);
-    const { date, startTime, endTime } = scheduleMission(responsible, DURATION_CATEGORY[type], usedByPersonDate);
+    const { date, startTime, endTime } = scheduleMission(
+      responsible,
+      DURATION_CATEGORY[type],
+      usedByPersonDate,
+      usedDaysByPerson
+    );
 
     missions.push({
       ...coords,
@@ -313,12 +350,14 @@ export function buildSeedMissions() {
   const clusterResolved = CLUSTER_MISSIONS.map((m) => ({ ...m, date: resolveWorkingDate(m.dateOffset) }));
 
   const usedByPersonDate = {};
+  const usedDaysByPerson = Object.fromEntries(USERS.map((u) => [u, []]));
   for (const m of [...heroResolved, ...clusterResolved]) {
     const key = `${m.responsible}|${m.date}`;
     usedByPersonDate[key] = [...(usedByPersonDate[key] || []), { startTime: m.startTime, endTime: m.endTime }];
+    if (!usedDaysByPerson[m.responsible].includes(m.date)) usedDaysByPerson[m.responsible].push(m.date);
   }
 
-  const generated = buildGeneratedMissions(usedByPersonDate);
+  const generated = buildGeneratedMissions(usedByPersonDate, usedDaysByPerson);
   const all = [...heroResolved, ...clusterResolved, ...generated];
 
   return all.map((m, i) => ({

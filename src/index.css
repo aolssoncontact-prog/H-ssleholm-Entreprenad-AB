@@ -629,14 +629,42 @@ a {
   position: relative;
 }
 
+.address-input-wrap {
+  position: relative;
+}
+
 .address-autocomplete input {
   width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  padding: 10px 40px 10px 12px;
   font-size: 15px;
   min-height: 44px;
   background: white;
+}
+
+.address-status-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: white;
+}
+
+.address-status-ok {
+  background: var(--color-success);
+}
+
+.address-status-error {
+  background: var(--color-danger);
 }
 
 .address-autocomplete-status {
@@ -1100,6 +1128,16 @@ a {
   box-shadow: var(--shadow);
 }
 
+.dashboard-map-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dashboard-map-container {
+  height: 320px;
+}
+
 .map-marker-pin {
   width: 100%;
   height: 100%;
@@ -1116,6 +1154,13 @@ a {
 .map-marker-pin span {
   transform: rotate(45deg);
   font-size: 15px;
+}
+
+.route-arrow {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--arrow-color, #1e3a5f);
+  filter: drop-shadow(0 0 2px white) drop-shadow(0 0 2px white);
 }
 
 .route-summary {
@@ -1370,7 +1415,7 @@ a {
   }
 
   .stat-row {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .detail-grid {
