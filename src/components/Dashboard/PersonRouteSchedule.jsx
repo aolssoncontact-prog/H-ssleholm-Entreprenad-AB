@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchDirections } from '../../lib/ors.js';
+import { estimateTravel } from '../../lib/travel.js';
 import { formatDistance, formatDuration } from '../../lib/geo.js';
 import { MISSION_TYPE_ICONS, WORKDAY_END } from '../../lib/constants.js';
 import StatusBadge from '../common/StatusBadge.jsx';
@@ -44,9 +44,12 @@ export default function PersonRouteSchedule({ person, missions, office }) {
 
     Promise.all(
       pairs.map(([from, to]) =>
-        fetchDirections([from, to])
-          .then((res) => ({ loading: false, distanceMeters: res.distanceMeters, durationSeconds: res.durationSeconds }))
-          .catch((err) => ({ loading: false, error: err.message }))
+        estimateTravel(from, to).then((res) => ({
+          loading: false,
+          distanceMeters: res.distanceMeters,
+          durationSeconds: res.durationSeconds,
+          estimated: res.estimated,
+        }))
       )
     ).then((results) => {
       if (!cancelled) setLegs(results);
@@ -70,7 +73,7 @@ export default function PersonRouteSchedule({ person, missions, office }) {
   const lastMission = dayMissions[dayMissions.length - 1];
   const lastLeg = legs[legs.length - 1];
   const estimatedReturn =
-    lastLeg && !lastLeg.loading && !lastLeg.error
+    lastLeg && !lastLeg.loading
       ? addMinutesToTime(lastMission.endTime, Math.round(lastLeg.durationSeconds / 60))
       : null;
   const lateReturn = estimatedReturn && estimatedReturn > WORKDAY_END;
@@ -95,7 +98,7 @@ export default function PersonRouteSchedule({ person, missions, office }) {
           let gapWarning = null;
           if (nextMission && leg && !leg.loading) {
             const gapMinutes = minutesSinceMidnight(nextMission.startTime) - minutesSinceMidnight(mission.endTime);
-            const travelMinutes = nextLeg && !nextLeg.loading && !nextLeg.error ? Math.round(nextLeg.durationSeconds / 60) : null;
+            const travelMinutes = nextLeg && !nextLeg.loading ? Math.round(nextLeg.durationSeconds / 60) : null;
             if (travelMinutes != null && gapMinutes < travelMinutes) {
               gapWarning = `⚠ Endast ${gapMinutes} min mellan uppdragen – körtid beräknas till ${travelMinutes} min.`;
             }
@@ -105,10 +108,10 @@ export default function PersonRouteSchedule({ person, missions, office }) {
             <li key={mission.id}>
               <div className="route-leg">
                 {leg?.loading && <span className="route-leg-text">Beräknar körsträcka…</span>}
-                {leg?.error && <span className="route-leg-text text-error">Kunde inte hämta rutt</span>}
-                {leg && !leg.loading && !leg.error && (
+                {leg && !leg.loading && (
                   <span className="route-leg-text">
                     ↓ {formatDuration(leg.durationSeconds)} · {formatDistance(leg.distanceMeters)}
+                    {leg.estimated && ' (uppskattat)'}
                   </span>
                 )}
               </div>
@@ -131,10 +134,10 @@ export default function PersonRouteSchedule({ person, missions, office }) {
         <li>
           <div className="route-leg">
             {lastLeg?.loading && <span className="route-leg-text">Beräknar körsträcka…</span>}
-            {lastLeg?.error && <span className="route-leg-text text-error">Kunde inte hämta rutt</span>}
-            {lastLeg && !lastLeg.loading && !lastLeg.error && (
+            {lastLeg && !lastLeg.loading && (
               <span className="route-leg-text">
                 ↓ {formatDuration(lastLeg.durationSeconds)} · {formatDistance(lastLeg.distanceMeters)}
+                {lastLeg.estimated && ' (uppskattat)'}
               </span>
             )}
           </div>

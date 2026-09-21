@@ -7,11 +7,11 @@
 // bara innehållet i den här filen.
 
 const KEYS = {
-  missions: 'hea_missions_v2',
-  machines: 'hea_machines_v2',
+  missions: 'hea_missions_v3',
+  machines: 'hea_machines_v3',
   personView: 'hea_person_view_v1',
   office: 'hea_office_location_v1',
-  seeded: 'hea_seeded_v2',
+  seeded: 'hea_seeded_v3',
 };
 
 function readJson(key, fallback) {

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MISSION_TYPES, MISSION_STATUSES, USERS, WORKDAY_START, WORKDAY_END } from '../../lib/constants.js';
-import { findOverlappingMissionForPerson } from '../../lib/conflicts.js';
+import { checkAvailability } from '../../lib/availability.js';
+import PersonDayTimeline from './PersonDayTimeline.jsx';
 
 const EMPTY = {
   title: '',
@@ -16,15 +17,63 @@ const EMPTY = {
   notes: '',
 };
 
-export default function MissionForm({ initial, onCancel, onSubmit, submitLabel = 'Spara', missions = [], excludeId = null }) {
+export default function MissionForm({
+  initial,
+  onCancel,
+  onSubmit,
+  submitLabel = 'Spara',
+  missions = [],
+  excludeId = null,
+  office = null,
+}) {
   const [form, setForm] = useState(() => ({ ...EMPTY, ...initial }));
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  // Live-förhandsvisning av tillgänglighet medan användaren fyller i formuläret.
+  // Den slutgiltiga kontrollen görs alltid på nytt vid inskick (se handleSubmit).
+  const [preview, setPreview] = useState({ status: 'idle' });
 
   function update(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleSubmit(e) {
+  useEffect(() => {
+    const lat = Number(form.lat);
+    const lon = Number(form.lon);
+    const timesValid = form.startTime && form.endTime && form.startTime < form.endTime;
+    const coordsValid = form.lat !== '' && form.lon !== '' && !Number.isNaN(lat) && !Number.isNaN(lon);
+
+    if (!timesValid || !coordsValid || !form.responsible || !form.date) {
+      setPreview({ status: 'idle' });
+      return;
+    }
+
+    let cancelled = false;
+    setPreview({ status: 'checking' });
+    const timeout = setTimeout(() => {
+      checkAvailability({
+        missions,
+        office,
+        candidate: { ...form, lat, lon },
+        excludeId,
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setPreview(result.ok ? { status: 'ok' } : { status: 'blocked', message: result.message });
+        })
+        .catch(() => {
+          if (!cancelled) setPreview({ status: 'idle' });
+        });
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.responsible, form.date, form.startTime, form.endTime, form.lat, form.lon, missions, office, excludeId]);
+
+  async function handleSubmit(e) {
     e.preventDefault();
     setError('');
 
@@ -34,15 +83,25 @@ export default function MissionForm({ initial, onCancel, onSubmit, submitLabel =
     if (Number.isNaN(lat) || Number.isNaN(lon)) return setError('Ange giltiga koordinater (lat, lon).');
     if (form.startTime >= form.endTime) return setError('Sluttid måste vara efter starttid.');
 
-    const clash = findOverlappingMissionForPerson(missions, form, excludeId);
-    if (clash) {
-      return setError(
-        `${form.responsible} är redan bokad ${clash.startTime}–${clash.endTime} på "${clash.title}" samma dag. Ändra tid, dag eller ansvarig.`
-      );
+    setSubmitting(true);
+    try {
+      const result = await checkAvailability({
+        missions,
+        office,
+        candidate: { ...form, lat, lon },
+        excludeId,
+      });
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      onSubmit({ ...form, lat, lon });
+    } finally {
+      setSubmitting(false);
     }
-
-    onSubmit({ ...form, lat, lon });
   }
+
+  const blocked = preview.status === 'blocked';
 
   return (
     <form className="mission-form" onSubmit={handleSubmit}>
@@ -144,6 +203,20 @@ export default function MissionForm({ initial, onCancel, onSubmit, submitLabel =
         </label>
       </div>
 
+      <PersonDayTimeline
+        person={form.responsible}
+        date={form.date}
+        missions={missions}
+        excludeId={excludeId}
+        candidate={{ startTime: form.startTime, endTime: form.endTime, status: preview.status }}
+      />
+
+      <div className={'availability-status availability-' + preview.status}>
+        {preview.status === 'checking' && 'Kontrollerar tillgänglighet (arbetstid och restid)…'}
+        {preview.status === 'ok' && '✅ Tiden går att boka – arbetstid och restid räcker.'}
+        {preview.status === 'blocked' && `🚫 ${preview.message}`}
+      </div>
+
       <label className="form-field">
         <span>Noteringar</span>
         <textarea
@@ -156,7 +229,9 @@ export default function MissionForm({ initial, onCancel, onSubmit, submitLabel =
 
       <div className="form-actions">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>Avbryt</button>
-        <button type="submit" className="btn btn-primary">{submitLabel}</button>
+        <button type="submit" className="btn btn-primary" disabled={submitting || blocked}>
+          {submitting ? 'Kontrollerar…' : submitLabel}
+        </button>
       </div>
     </form>
   );

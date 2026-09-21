@@ -4,24 +4,23 @@ import { useApp } from '../context/AppContext.jsx';
 import MissionCard from '../components/Missions/MissionCard.jsx';
 import MissionForm from '../components/Missions/MissionForm.jsx';
 import Modal from '../components/common/Modal.jsx';
-import { MISSION_TYPES, MISSION_STATUSES, USERS } from '../lib/constants.js';
+import { MISSION_TYPES, MISSION_STATUSES } from '../lib/constants.js';
 
 export default function Missions() {
-  const { missions, saveMission } = useApp();
+  const { missions, saveMission, personView, office } = useApp();
   const navigate = useNavigate();
 
   const [typeFilter, setTypeFilter] = useState('Alla');
   const [statusFilter, setStatusFilter] = useState('Alla');
-  const [responsibleFilter, setResponsibleFilter] = useState('Alla');
   const [showForm, setShowForm] = useState(false);
 
   const filtered = useMemo(() => {
     return missions
+      .filter((m) => personView === 'Alla' || m.responsible === personView)
       .filter((m) => typeFilter === 'Alla' || m.type === typeFilter)
       .filter((m) => statusFilter === 'Alla' || m.status === statusFilter)
-      .filter((m) => responsibleFilter === 'Alla' || m.responsible === responsibleFilter)
       .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
-  }, [missions, typeFilter, statusFilter, responsibleFilter]);
+  }, [missions, typeFilter, statusFilter, personView]);
 
   async function handleCreate(form) {
     const mission = {
@@ -40,7 +39,10 @@ export default function Missions() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Uppdrag</h1>
+        <div>
+          <h1>Uppdrag</h1>
+          <p className="page-subtitle">{personView === 'Alla' ? 'Bertil & Ove' : `Vy: ${personView}`}</p>
+        </div>
         <button type="button" className="btn btn-primary" onClick={() => setShowForm(true)}>
           + Lägg till uppdrag
         </button>
@@ -65,15 +67,6 @@ export default function Missions() {
             ))}
           </select>
         </label>
-        <label className="filter-field">
-          <span>Ansvarig</span>
-          <select value={responsibleFilter} onChange={(e) => setResponsibleFilter(e.target.value)}>
-            <option value="Alla">Alla</option>
-            {USERS.map((u) => (
-              <option key={u} value={u}>{u}</option>
-            ))}
-          </select>
-        </label>
       </div>
 
       <p className="result-count">{filtered.length} uppdrag</p>
@@ -95,6 +88,8 @@ export default function Missions() {
             onSubmit={handleCreate}
             submitLabel="Skapa uppdrag"
             missions={missions}
+            office={office}
+            initial={personView === 'Alla' ? undefined : { responsible: personView }}
           />
         </Modal>
       )}

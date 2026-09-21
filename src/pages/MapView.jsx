@@ -8,7 +8,7 @@ import StatusBadge from '../components/common/StatusBadge.jsx';
 import { fetchOptimizedOrder, fetchDirections } from '../lib/ors.js';
 import { formatDistance, formatDuration } from '../lib/geo.js';
 import { todayIso } from '../lib/dateUtils.js';
-import { MISSION_TYPE_ICONS, MISSION_TYPES, STATUS_COLORS, WORKDAY_START, WORKDAY_END } from '../lib/constants.js';
+import { MISSION_TYPE_ICONS, MISSION_TYPES, STATUS_COLORS, USERS, WORKDAY_START, WORKDAY_END } from '../lib/constants.js';
 
 function FitBounds({ points }) {
   const map = useMap();
@@ -21,15 +21,19 @@ function FitBounds({ points }) {
 }
 
 export default function MapView() {
-  const { office, missions, machines } = useApp();
+  const { office, missions, machines, personView } = useApp();
   const navigate = useNavigate();
 
   const [date, setDate] = useState(todayIso());
+  const [person, setPerson] = useState(USERS.includes(personView) ? personView : USERS[0]);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState('');
-  const [routeInfo, setRouteInfo] = useState(null); // { geometry, distanceMeters, durationSeconds, order }
+  const [routeInfo, setRouteInfo] = useState(null); // { geometry, distanceMeters, durationSeconds, order, person }
 
-  const missionsForDate = useMemo(() => missions.filter((m) => m.date === date), [missions, date]);
+  const missionsForDate = useMemo(
+    () => missions.filter((m) => m.date === date && m.responsible === person),
+    [missions, date, person]
+  );
 
   const allPoints = useMemo(() => {
     const pts = [];
@@ -42,7 +46,7 @@ export default function MapView() {
   useEffect(() => {
     setRouteInfo(null);
     setOptimizeError('');
-  }, [date]);
+  }, [date, person]);
 
   async function handleOptimize() {
     if (!office || missionsForDate.length === 0) return;
@@ -61,6 +65,7 @@ export default function MapView() {
         distanceMeters: directions.distanceMeters,
         durationSeconds: directions.durationSeconds,
         order: orderedMissions,
+        person,
       });
     } catch (err) {
       setOptimizeError(err.message);
@@ -77,6 +82,14 @@ export default function MapView() {
         <h1>Karta</h1>
         <div className="map-controls">
           <label className="filter-field">
+            <span>Person</span>
+            <select value={person} onChange={(e) => setPerson(e.target.value)}>
+              {USERS.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-field">
             <span>Dag att optimera</span>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
@@ -86,7 +99,7 @@ export default function MapView() {
             onClick={handleOptimize}
             disabled={optimizing || missionsForDate.length === 0}
           >
-            {optimizing ? 'Optimerar…' : `Optimera dagsrutt (${missionsForDate.length})`}
+            {optimizing ? 'Optimerar…' : `Optimera för ${person} (${missionsForDate.length})`}
           </button>
         </div>
       </div>
@@ -95,7 +108,7 @@ export default function MapView() {
 
       {routeInfo && (
         <div className="route-summary">
-          <strong>Optimerad rutt:</strong> {formatDistance(routeInfo.distanceMeters)} totalt · {formatDuration(routeInfo.durationSeconds)} körtid
+          <strong>Optimerad rutt för {routeInfo.person}:</strong> {formatDistance(routeInfo.distanceMeters)} totalt · {formatDuration(routeInfo.durationSeconds)} körtid
           <ol className="route-order">
             {routeInfo.order.map((m, i) => (
               <li key={m.id}>{i + 1}. {m.title} ({m.startTime}–{m.endTime})</li>

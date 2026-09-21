@@ -1,4 +1,5 @@
 import { MISSION_TYPES, USERS, OFFICE_FALLBACK_COORDS } from './constants.js';
+import { timesOverlap } from './dateUtils.js';
 
 function todayPlus(days) {
   const d = new Date();
@@ -6,17 +7,75 @@ function todayPlus(days) {
   return d.toISOString().slice(0, 10);
 }
 
-const RAW_MISSIONS = [
-  { lat: 56.09600445454126, lon: 13.669358856640757 },
-  { lat: 56.3325484214752, lon: 13.947911106305941 },
-  { lat: 56.32265006011826, lon: 13.430867095805649 },
-  { lat: 56.22161643818717, lon: 13.881306499375626 },
-  { lat: 55.93222421538359, lon: 13.926562896546796 },
-  { lat: 55.87795195076183, lon: 13.502215996891856 },
+// Enkel deterministisk pseudo-slumpgenerator så att exempeldatan ser
+// "slumpmässigt" utspridd ut men blir likadan varje gång appen seedas.
+function seededRandom(seed) {
+  let s = seed >>> 0;
+  return function next() {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const rng = seededRandom(20240921);
+
+function pick(arr) {
+  return arr[Math.floor(rng() * arr.length)];
+}
+
+const TOWNS = [
+  { name: 'Hässleholm', lat: 56.0596, lon: 13.7668 },
+  { name: 'Kristianstad', lat: 56.0294, lon: 14.1567 },
+  { name: 'Klippan', lat: 56.1325, lon: 13.1235 },
 ];
 
-const MISSION_DETAILS = [
+const STREETS = {
+  Hässleholm: ['Kristianstadsvägen', 'Vankivavägen', 'Ljungdalavägen', 'Finjasjövägen', 'Tyrs väg', 'Sjöuddevägen', 'Garnisonsvägen'],
+  Kristianstad: ['Åhusvägen', 'Degebergavägen', 'Näsby fält', 'Rinkabyvägen', 'Gamlegårdsvägen', 'Vä Norra', 'Tivoligatan'],
+  Klippan: ['Ljungbyvägen', 'Östra Ringvägen', 'Stidsvigsvägen', 'Snälltågsvägen', 'Färingtoftavägen', 'Bårslövsvägen'],
+};
+
+// Slumpar en punkt inom en cirkel runt en tätort. Longitudgrader är ca 1,65
+// gånger "smalare" än breddgrader vid den här breddgraden, så vi kompenserar
+// lite grovt för att spridningen ska se jämn ut på kartan.
+function jitterAround(center, radiusDeg) {
+  const angle = rng() * Math.PI * 2;
+  const r = Math.sqrt(rng()) * radiusDeg;
+  return {
+    lat: +(center.lat + Math.cos(angle) * r).toFixed(6),
+    lon: +(center.lon + Math.sin(angle) * r * 1.65).toFixed(6),
+  };
+}
+
+const TYPE_DESCRIPTIONS = {
+  'Schaktarbete': 'Schaktning och iordningställande av mark. Djup och omfattning enligt platsbesök.',
+  '3-kammarbrunn': 'Gräva ur och installera ny 3-kammarbrunn för enskilt avlopp enligt kommunens tillstånd.',
+  'Jordvärme': 'Gräva ner kollektorslang för jordvärme och samordna med VVS-firma som ansluter värmepumpen.',
+  'Plattsättning': 'Förberedelse och plattsättning av uteplats/gångyta, inklusive avjämning med stenmjöl och kantstöd.',
+  'Gjutning (grund)': 'Formsättning och gjutning av platta på mark eller grund enligt konstruktionsritning.',
+  'Hyvling av väg': 'Hyvling och profilering av enskild väg samt påfyllning av grus i sättningar.',
+};
+
+const NOTE_POOL = [
+  'Kund vill bli uppringd innan ankomst.',
+  'Nycklar hämtas hos granne vid infarten.',
+  'Kontrollera ledningar med Ledningskollen innan grävstart.',
+  'Fakturaunderlag ska skickas till kontoret samma dag som klart.',
+  'Grannar informerade om arbetet.',
+  'Extra fallskydd krävs pga närhet till väg.',
+  '',
+  '',
+];
+
+// De sex ursprungliga uppdragen på de koordinater som angavs från start.
+// Två av dem (index 4 och 5) utgör tillsammans med två nya uppdrag nedan
+// ett medvetet exempel på "samma dag"-planering (se CLUSTER_OFFSET).
+const HERO_MISSIONS = [
   {
+    lat: 56.09600445454126,
+    lon: 13.669358856640757,
     type: 'Schaktarbete',
     title: 'Schaktarbete inför garageuppfart',
     description: 'Schaktning och iordningställande av mark inför ny garageuppfart. Ca 40 m² ska grävas ur till 30 cm djup och fyllas med bärlager.',
@@ -28,6 +87,8 @@ const MISSION_DETAILS = [
     notes: 'Kund har hund på tomten – ring innan ankomst.',
   },
   {
+    lat: 56.3325484214752,
+    lon: 13.947911106305941,
     type: '3-kammarbrunn',
     title: 'Installation av 3-kammarbrunn',
     description: 'Gräva ur och installera ny 3-kammarbrunn för enskilt avlopp enligt kommunens tillstånd. Anslutning till befintligt spillvattenrör.',
@@ -39,77 +100,215 @@ const MISSION_DETAILS = [
     notes: 'Tillstånd från miljöförvaltningen finns i pärm på kontoret. Kontrollera nivåer innan igenfyllning.',
   },
   {
+    lat: 56.32265006011826,
+    lon: 13.430867095805649,
     type: 'Jordvärme',
     title: 'Grävning för jordvärmeslingor',
     description: 'Gräva ner kollektorslang för jordvärme, ca 300 meter slinga fördelat på tre schakt. Samordnas med VVS-firma som ansluter värmepumpen.',
     status: 'Planerat',
     responsible: 'Bertil',
-    dateOffset: 1,
+    dateOffset: 6,
     startTime: '07:00',
     endTime: '16:00',
     notes: 'Beställ markeringsspray för att markera slingans sträckning innan igenfyllning.',
   },
   {
+    lat: 56.22161643818717,
+    lon: 13.881306499375626,
     type: 'Plattsättning',
     title: 'Plattsättning av uteplats',
     description: 'Förberedelse och plattsättning av ca 25 m² uteplats, inklusive avjämning med stenmjöl och kantstöd.',
     status: 'Klart',
     responsible: 'Ove',
-    dateOffset: -2,
+    dateOffset: -4,
     startTime: '08:00',
     endTime: '16:00',
     notes: 'Kund nöjd, fotodokumentation uppladdad. Fakturaunderlag skickat till kontoret.',
   },
   {
+    lat: 55.93222421538359,
+    lon: 13.926562896546796,
     type: 'Gjutning (grund)',
     title: 'Gjutning av husgrund',
     description: 'Formsättning och gjutning av platta på mark för nytt komplementbostadshus, ca 60 m².',
-    status: 'Pågående',
+    status: 'Planerat',
     responsible: 'Bertil',
-    dateOffset: 0,
-    startTime: '10:30',
-    endTime: '15:00',
-    notes: 'Betongbil bokad till kl. 11:00. Väderprognos bra hela dagen.',
+    dateOffset: 4,
+    startTime: '07:00',
+    endTime: '11:00',
+    notes: 'Betongbil bokad till kl. 08:00. Väderprognos bra hela dagen.',
   },
   {
+    lat: 55.87795195076183,
+    lon: 13.502215996891856,
     type: 'Hyvling av väg',
     title: 'Hyvling av grusväg',
     description: 'Hyvling och profilering av ca 800 meter enskild grusväg samt påfyllning av grus i sättningar.',
     status: 'Planerat',
     responsible: 'Ove',
-    dateOffset: 0,
-    startTime: '11:00',
-    endTime: '13:00',
+    dateOffset: 4,
+    startTime: '07:00',
+    endTime: '09:30',
     notes: 'Väghållningsförening har informerat boende om avstängning under arbetet.',
   },
 ];
 
-export function buildSeedMissions() {
-  return RAW_MISSIONS.map((coords, i) => {
-    const details = MISSION_DETAILS[i];
-    return {
-      id: `mission-${i + 1}`,
-      type: details.type,
-      title: details.title,
-      description: details.description,
-      lat: coords.lat,
-      lon: coords.lon,
-      address: null,
-      status: details.status,
-      responsible: details.responsible,
-      date: todayPlus(details.dateOffset),
-      startTime: details.startTime,
-      endTime: details.endTime,
-      notes: details.notes,
-      machineIds: [],
-      files: [],
-      createdAt: new Date().toISOString(),
-    };
-  });
+// Samma dag som de två sista HERO-uppdragen ovan (dateOffset 4) får både
+// Bertil och Ove ett andra uppdrag för eftermiddagen. Bertils andra stopp
+// ligger nära det första (gott om tid för transport), medan Oves andra
+// stopp medvetet ligger långt bort med en snäv lucka – för att visa att
+// planeringsverktyget varnar när restiden inte räcker.
+const CLUSTER_OFFSET = 4;
+const CLUSTER_MISSIONS = [
+  {
+    ...jitterAround(TOWNS[1], 0.05),
+    type: 'Plattsättning',
+    title: 'Plattsättning av uteplats – Rinkabyvägen, Kristianstad',
+    description: TYPE_DESCRIPTIONS['Plattsättning'] + ' Plats: Rinkabyvägen i Kristianstad-området.',
+    status: 'Planerat',
+    responsible: 'Bertil',
+    dateOffset: CLUSTER_OFFSET,
+    startTime: '12:00',
+    endTime: '15:30',
+    notes: 'Andra uppdraget för dagen – gott om tid för transport från förmiddagens jobb.',
+  },
+  {
+    ...jitterAround(TOWNS[1], 0.05),
+    type: '3-kammarbrunn',
+    title: 'Installation av 3-kammarbrunn – Åhusvägen, Kristianstad',
+    description: TYPE_DESCRIPTIONS['3-kammarbrunn'] + ' Plats: Åhusvägen i Kristianstad-området.',
+    status: 'Planerat',
+    responsible: 'Ove',
+    dateOffset: CLUSTER_OFFSET,
+    startTime: '10:00',
+    endTime: '13:00',
+    notes: 'OBS – kort tid efter förmiddagens uppdrag, kontrollera att restiden räcker.',
+  },
+];
+
+const DURATION_CATEGORY = {
+  'Schaktarbete': 'half',
+  '3-kammarbrunn': 'half',
+  'Jordvärme': 'full',
+  'Plattsättning': 'half',
+  'Gjutning (grund)': 'full',
+  'Hyvling av väg': 'half',
+};
+
+const MORNING_STARTS = ['07:00', '07:30', '08:00'];
+const MORNING_ENDS = ['10:30', '11:00', '11:30'];
+const AFTERNOON_STARTS = ['12:00', '12:30', '13:00'];
+const AFTERNOON_ENDS = ['15:30', '16:00', '16:30', '17:00'];
+const FULLDAY_ENDS = ['16:00', '16:30', '17:00'];
+
+function makeSlot(category) {
+  if (category === 'full') return { startTime: '07:00', endTime: pick(FULLDAY_ENDS) };
+  return rng() < 0.5
+    ? { startTime: pick(MORNING_STARTS), endTime: pick(MORNING_ENDS) }
+    : { startTime: pick(AFTERNOON_STARTS), endTime: pick(AFTERNOON_ENDS) };
 }
 
-export function buildSeedMachines(office = OFFICE_FALLBACK_COORDS) {
-  const missions = buildSeedMissions();
+const SCHEDULE_OFFSET_MIN = -6;
+const SCHEDULE_OFFSET_MAX = 13;
+
+// Hittar en dag och tid för `person` som inte krockar med det som redan är
+// inbokat (varken de fasta HERO/CLUSTER-uppdragen eller tidigare
+// slumpmässigt schemalagda uppdrag).
+function scheduleMission(person, category, usedByPersonDate) {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const offset = SCHEDULE_OFFSET_MIN + Math.floor(rng() * (SCHEDULE_OFFSET_MAX - SCHEDULE_OFFSET_MIN + 1));
+    const slot = makeSlot(category);
+    const key = `${person}|${offset}`;
+    const existing = usedByPersonDate[key] || [];
+    const conflict = existing.some((e) => timesOverlap(e.startTime, e.endTime, slot.startTime, slot.endTime));
+    if (!conflict) {
+      usedByPersonDate[key] = [...existing, slot];
+      return { dateOffset: offset, ...slot };
+    }
+  }
+  for (let offset = SCHEDULE_OFFSET_MIN; offset <= SCHEDULE_OFFSET_MAX; offset++) {
+    const slot = makeSlot(category);
+    const key = `${person}|${offset}`;
+    const existing = usedByPersonDate[key] || [];
+    const conflict = existing.some((e) => timesOverlap(e.startTime, e.endTime, slot.startTime, slot.endTime));
+    if (!conflict) {
+      usedByPersonDate[key] = [...existing, slot];
+      return { dateOffset: offset, ...slot };
+    }
+  }
+  throw new Error('Kunde inte schemalägga exempeluppdrag utan krock.');
+}
+
+function statusForOffset(offset) {
+  if (offset < 0) return 'Klart';
+  if (offset === 0) return rng() < 0.6 ? 'Pågående' : 'Planerat';
+  return 'Planerat';
+}
+
+// Bygger ytterligare 18 fiktiva uppdrag runt Hässleholm, Kristianstad och
+// Klippan (utöver de två i CLUSTER_MISSIONS), utspridda över ungefär tre
+// veckor med både förflutna, dagens och kommande datum.
+function buildGeneratedMissions(usedByPersonDate) {
+  const missions = [];
+  for (let i = 0; i < 18; i++) {
+    const town = TOWNS[i % TOWNS.length];
+    const type = MISSION_TYPES[(i + 2) % MISSION_TYPES.length];
+    const street = pick(STREETS[town.name]);
+    const responsible = i % 2 === 0 ? 'Ove' : 'Bertil';
+    const coords = jitterAround(town, 0.09);
+    const { dateOffset, startTime, endTime } = scheduleMission(responsible, DURATION_CATEGORY[type], usedByPersonDate);
+
+    missions.push({
+      ...coords,
+      type,
+      title: `${type} – ${street}, ${town.name}`,
+      description: `${TYPE_DESCRIPTIONS[type]} Plats: ${street} i ${town.name}-området.`,
+      status: statusForOffset(dateOffset),
+      responsible,
+      dateOffset,
+      startTime,
+      endTime,
+      notes: pick(NOTE_POOL),
+    });
+  }
+  return missions;
+}
+
+export function buildSeedMissions() {
+  const usedByPersonDate = {};
+  for (const m of HERO_MISSIONS) {
+    const key = `${m.responsible}|${m.dateOffset}`;
+    usedByPersonDate[key] = [...(usedByPersonDate[key] || []), { startTime: m.startTime, endTime: m.endTime }];
+  }
+  for (const m of CLUSTER_MISSIONS) {
+    const key = `${m.responsible}|${m.dateOffset}`;
+    usedByPersonDate[key] = [...(usedByPersonDate[key] || []), { startTime: m.startTime, endTime: m.endTime }];
+  }
+
+  const generated = buildGeneratedMissions(usedByPersonDate);
+  const all = [...HERO_MISSIONS, ...CLUSTER_MISSIONS, ...generated];
+
+  return all.map((m, i) => ({
+    id: `mission-${i + 1}`,
+    type: m.type,
+    title: m.title,
+    description: m.description,
+    lat: m.lat,
+    lon: m.lon,
+    address: null,
+    status: m.status,
+    responsible: m.responsible,
+    date: todayPlus(m.dateOffset),
+    startTime: m.startTime,
+    endTime: m.endTime,
+    notes: m.notes,
+    machineIds: [],
+    files: [],
+    createdAt: new Date().toISOString(),
+  }));
+}
+
+export function buildSeedMachines(missions, office = OFFICE_FALLBACK_COORDS) {
   return [
     {
       id: 'machine-1',
@@ -180,7 +379,7 @@ export async function seedIfNeeded(repository, officeLocation) {
 
   const missions = buildSeedMissions();
   await repository.saveMissions(missions);
-  await repository.saveMachines(buildSeedMachines(officeLocation || OFFICE_FALLBACK_COORDS));
+  await repository.saveMachines(buildSeedMachines(missions, officeLocation || OFFICE_FALLBACK_COORDS));
   await repository.markSeeded();
 }
 

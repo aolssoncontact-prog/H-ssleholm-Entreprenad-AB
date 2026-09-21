@@ -55,16 +55,3 @@ export function findPersonConflicts(missions) {
 
   return conflicts;
 }
-
-// Returnerar det uppdrag (om något) som gör att `candidate` skulle krocka
-// tidsmässigt med ett redan bokat uppdrag för samma ansvariga person samma
-// dag. `excludeId` utesluter uppdraget som eventuellt redigeras.
-export function findOverlappingMissionForPerson(missions, candidate, excludeId) {
-  return missions.find(
-    (m) =>
-      m.id !== excludeId &&
-      m.responsible === candidate.responsible &&
-      m.date === candidate.date &&
-      timesOverlap(m.startTime, m.endTime, candidate.startTime, candidate.endTime)
-  );
-}

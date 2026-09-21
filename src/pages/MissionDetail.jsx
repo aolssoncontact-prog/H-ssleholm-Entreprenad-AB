@@ -274,6 +274,7 @@ export default function MissionDetail() {
             submitLabel="Spara ändringar"
             missions={missions}
             excludeId={mission.id}
+            office={office}
           />
         </Modal>
       )}
