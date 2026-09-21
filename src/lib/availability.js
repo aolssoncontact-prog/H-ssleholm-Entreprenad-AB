@@ -1,6 +1,7 @@
 import { WORKDAY_START, WORKDAY_END } from './constants.js';
 import { timesOverlap } from './dateUtils.js';
 import { estimateTravel } from './travel.js';
+import { nonWorkingDayReason } from './holidays.js';
 
 // Extra säkerhetsmarginal utöver den rena körtiden, för av- och pålastning
 // samt att inte behöva räkna på sekunden.
@@ -17,14 +18,25 @@ function minutesToLabel(minutes) {
 
 // Kontrollerar om `candidate` ({ responsible, date, startTime, endTime, lat, lon })
 // går att boka in för personen, givet:
-//  1. Inga andra uppdrag för samma person samma dag får krocka tidsmässigt.
-//  2. Det måste finnas tid nog att köra dit från föregående stopp den dagen
+//  1. Datumet får inte vara en lördag, söndag eller svensk röd dag – Bertil
+//     och Ove jobbar inte då.
+//  2. Inga andra uppdrag för samma person samma dag får krocka tidsmässigt.
+//  3. Det måste finnas tid nog att köra dit från föregående stopp den dagen
 //     (föregående uppdrag, eller kontoret om det är dagens första stopp).
-//  3. Det måste finnas tid nog att köra vidare till nästa stopp (nästa
+//  4. Det måste finnas tid nog att köra vidare till nästa stopp (nästa
 //     uppdrag, eller tillbaka till kontoret senast kl. 17:00 om det är
 //     dagens sista stopp).
 // Returnerar { ok: true } eller { ok: false, reason, message }.
 export async function checkAvailability({ missions, office, candidate, excludeId }) {
+  const nonWorking = nonWorkingDayReason(candidate.date);
+  if (nonWorking) {
+    return {
+      ok: false,
+      reason: 'non-working-day',
+      message: `${candidate.date} är en ${nonWorking} – Bertil och Ove jobbar inte då. Välj en vardag.`,
+    };
+  }
+
   const dayMissions = missions
     .filter((m) => m.id !== excludeId && m.responsible === candidate.responsible && m.date === candidate.date)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));

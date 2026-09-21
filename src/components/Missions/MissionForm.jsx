@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { MISSION_TYPES, MISSION_STATUSES, USERS, WORKDAY_START, WORKDAY_END } from '../../lib/constants.js';
 import { checkAvailability } from '../../lib/availability.js';
+import { nonWorkingDayReason } from '../../lib/holidays.js';
 import PersonDayTimeline from './PersonDayTimeline.jsx';
+import AddressAutocomplete from './AddressAutocomplete.jsx';
 
 const EMPTY = {
   title: '',
   type: MISSION_TYPES[0],
   description: '',
-  lat: '',
-  lon: '',
+  address: '',
+  lat: null,
+  lon: null,
   status: 'Planerat',
   responsible: USERS[0],
   date: new Date().toISOString().slice(0, 10),
@@ -16,6 +19,14 @@ const EMPTY = {
   endTime: WORKDAY_END,
   notes: '',
 };
+
+function initialState(initial) {
+  const merged = { ...EMPTY, ...initial };
+  if (!merged.address && merged.lat != null && merged.lon != null) {
+    merged.address = `${Number(merged.lat).toFixed(5)}, ${Number(merged.lon).toFixed(5)} (befintlig plats)`;
+  }
+  return merged;
+}
 
 export default function MissionForm({
   initial,
@@ -26,43 +37,53 @@ export default function MissionForm({
   excludeId = null,
   office = null,
 }) {
-  const [form, setForm] = useState(() => ({ ...EMPTY, ...initial }));
+  const [form, setForm] = useState(() => initialState(initial));
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  // Live-förhandsvisning av tillgänglighet medan användaren fyller i formuläret.
-  // Den slutgiltiga kontrollen görs alltid på nytt vid inskick (se handleSubmit).
-  const [preview, setPreview] = useState({ status: 'idle' });
+  // Live-förhandsvisning av tillgänglighet för BÅDA personerna, så man kan
+  // se vem som kan ta uppdraget först. Den slutgiltiga kontrollen för den
+  // faktiskt valda ansvariga görs alltid på nytt vid inskick (se handleSubmit).
+  const [previewByPerson, setPreviewByPerson] = useState({});
 
   function update(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  useEffect(() => {
-    const lat = Number(form.lat);
-    const lon = Number(form.lon);
-    const timesValid = form.startTime && form.endTime && form.startTime < form.endTime;
-    const coordsValid = form.lat !== '' && form.lon !== '' && !Number.isNaN(lat) && !Number.isNaN(lon);
+  function handleAddressSelect(suggestion) {
+    if (!suggestion) {
+      setForm((prev) => ({ ...prev, lat: null, lon: null }));
+      return;
+    }
+    setForm((prev) => ({ ...prev, address: suggestion.label, lat: suggestion.lat, lon: suggestion.lon }));
+  }
 
-    if (!timesValid || !coordsValid || !form.responsible || !form.date) {
-      setPreview({ status: 'idle' });
+  useEffect(() => {
+    const timesValid = form.startTime && form.endTime && form.startTime < form.endTime;
+    const coordsValid = form.lat != null && form.lon != null;
+
+    if (!timesValid || !coordsValid || !form.date) {
+      setPreviewByPerson({});
       return;
     }
 
     let cancelled = false;
-    setPreview({ status: 'checking' });
+    setPreviewByPerson(Object.fromEntries(USERS.map((u) => [u, { status: 'checking' }])));
     const timeout = setTimeout(() => {
-      checkAvailability({
-        missions,
-        office,
-        candidate: { ...form, lat, lon },
-        excludeId,
-      })
-        .then((result) => {
-          if (cancelled) return;
-          setPreview(result.ok ? { status: 'ok' } : { status: 'blocked', message: result.message });
+      Promise.all(
+        USERS.map((person) =>
+          checkAvailability({
+            missions,
+            office,
+            candidate: { ...form, responsible: person },
+            excludeId,
+          }).then((result) => [person, result.ok ? { status: 'ok' } : { status: 'blocked', message: result.message }])
+        )
+      )
+        .then((entries) => {
+          if (!cancelled) setPreviewByPerson(Object.fromEntries(entries));
         })
         .catch(() => {
-          if (!cancelled) setPreview({ status: 'idle' });
+          if (!cancelled) setPreviewByPerson({});
         });
     }, 500);
 
@@ -71,16 +92,14 @@ export default function MissionForm({
       clearTimeout(timeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.responsible, form.date, form.startTime, form.endTime, form.lat, form.lon, missions, office, excludeId]);
+  }, [form.date, form.startTime, form.endTime, form.lat, form.lon, missions, office, excludeId]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
 
     if (!form.title.trim()) return setError('Titel måste anges.');
-    const lat = Number(form.lat);
-    const lon = Number(form.lon);
-    if (Number.isNaN(lat) || Number.isNaN(lon)) return setError('Ange giltiga koordinater (lat, lon).');
+    if (form.lat == null || form.lon == null) return setError('Välj en adress från förslagslistan.');
     if (form.startTime >= form.endTime) return setError('Sluttid måste vara efter starttid.');
 
     setSubmitting(true);
@@ -88,20 +107,22 @@ export default function MissionForm({
       const result = await checkAvailability({
         missions,
         office,
-        candidate: { ...form, lat, lon },
+        candidate: form,
         excludeId,
       });
       if (!result.ok) {
         setError(result.message);
         return;
       }
-      onSubmit({ ...form, lat, lon });
+      onSubmit(form);
     } finally {
       setSubmitting(false);
     }
   }
 
+  const preview = previewByPerson[form.responsible] || { status: 'idle' };
   const blocked = preview.status === 'blocked';
+  const dateIssue = form.date ? nonWorkingDayReason(form.date) : null;
 
   return (
     <form className="mission-form" onSubmit={handleSubmit}>
@@ -142,30 +163,27 @@ export default function MissionForm({
         />
       </label>
 
-      <div className="form-row">
-        <label className="form-field">
-          <span>Latitud</span>
-          <input
-            type="number"
-            step="any"
-            value={form.lat}
-            onChange={(e) => update('lat', e.target.value)}
-            placeholder="56.0596"
-          />
-        </label>
-        <label className="form-field">
-          <span>Longitud</span>
-          <input
-            type="number"
-            step="any"
-            value={form.lon}
-            onChange={(e) => update('lon', e.target.value)}
-            placeholder="13.7668"
-          />
-        </label>
-      </div>
+      <label className="form-field">
+        <span>Adress</span>
+        <AddressAutocomplete value={form.address} onSelect={handleAddressSelect} placeholder="T.ex. Storgatan 4, Hässleholm" />
+        {form.lat != null && form.lon != null ? (
+          <span className="field-hint">📍 {form.lat.toFixed(5)}, {form.lon.toFixed(5)}</span>
+        ) : (
+          <span className="field-hint field-hint-error">Välj en adress ur förslagslistan.</span>
+        )}
+      </label>
 
       <div className="form-row">
+        <label className="form-field">
+          <span>Datum</span>
+          <input
+            type="date"
+            value={form.date}
+            onChange={(e) => update('date', e.target.value)}
+            className={dateIssue ? 'field-invalid' : ''}
+          />
+          {dateIssue && <span className="field-hint field-hint-error">🚫 Det är {dateIssue} – Bertil och Ove jobbar inte då.</span>}
+        </label>
         <label className="form-field">
           <span>Ansvarig</span>
           <select value={form.responsible} onChange={(e) => update('responsible', e.target.value)}>
@@ -173,10 +191,6 @@ export default function MissionForm({
               <option key={u} value={u}>{u}</option>
             ))}
           </select>
-        </label>
-        <label className="form-field">
-          <span>Datum</span>
-          <input type="date" value={form.date} onChange={(e) => update('date', e.target.value)} />
         </label>
       </div>
 
@@ -203,18 +217,36 @@ export default function MissionForm({
         </label>
       </div>
 
-      <PersonDayTimeline
-        person={form.responsible}
-        date={form.date}
-        missions={missions}
-        excludeId={excludeId}
-        candidate={{ startTime: form.startTime, endTime: form.endTime, status: preview.status }}
-      />
-
-      <div className={'availability-status availability-' + preview.status}>
-        {preview.status === 'checking' && 'Kontrollerar tillgänglighet (arbetstid och restid)…'}
-        {preview.status === 'ok' && '✅ Tiden går att boka – arbetstid och restid räcker.'}
-        {preview.status === 'blocked' && `🚫 ${preview.message}`}
+      <div className="form-field">
+        <span>Vem kan ta uppdraget först?</span>
+        <div className="dual-timeline-grid">
+          {USERS.map((person) => {
+            const personPreview = previewByPerson[person] || { status: 'idle' };
+            return (
+              <div key={person} className="dual-timeline-column">
+                <PersonDayTimeline
+                  person={person}
+                  date={form.date}
+                  missions={missions}
+                  excludeId={excludeId}
+                  candidate={{ startTime: form.startTime, endTime: form.endTime, status: personPreview.status }}
+                />
+                <div className={'availability-status availability-' + personPreview.status}>
+                  {personPreview.status === 'checking' && 'Kontrollerar…'}
+                  {personPreview.status === 'ok' && '✅ Ledig – kan ta uppdraget.'}
+                  {personPreview.status === 'blocked' && `🚫 ${personPreview.message}`}
+                </div>
+                <button
+                  type="button"
+                  className={'btn btn-small' + (form.responsible === person ? ' btn-primary' : ' btn-ghost')}
+                  onClick={() => update('responsible', person)}
+                >
+                  {form.responsible === person ? '✓ Vald som ansvarig' : `Tilldela ${person}`}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <label className="form-field">

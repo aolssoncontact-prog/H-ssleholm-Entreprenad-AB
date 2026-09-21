@@ -1,10 +1,37 @@
 import { MISSION_TYPES, USERS, OFFICE_FALLBACK_COORDS } from './constants.js';
 import { timesOverlap } from './dateUtils.js';
+import { isNonWorkingDay, toIsoDate, addDays } from './holidays.js';
 
-function todayPlus(days) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+// Bygger listan av faktiska arbetsdagar (inga lördagar, söndagar eller
+// svenska röda dagar) inom ett kalenderintervall runt dagens datum.
+function buildWorkingDays(startCalendarOffset, endCalendarOffset) {
+  const days = [];
+  const base = new Date();
+  for (let i = startCalendarOffset; i <= endCalendarOffset; i++) {
+    const iso = toIsoDate(addDays(base, i));
+    if (!isNonWorkingDay(iso)) days.push(iso);
+  }
+  return days;
+}
+
+const WORKING_DAYS = buildWorkingDays(-14, 35);
+
+function nearestWorkingIndex(days) {
+  const todayStr = toIsoDate(new Date());
+  const exact = days.indexOf(todayStr);
+  if (exact !== -1) return exact;
+  const next = days.findIndex((d) => d > todayStr);
+  return next === -1 ? days.length - 1 : next;
+}
+
+// Index i WORKING_DAYS som motsvarar dagens datum (eller närmaste
+// kommande arbetsdag, om idag råkar vara helg/röd dag).
+const TODAY_INDEX = nearestWorkingIndex(WORKING_DAYS);
+
+// Slår upp en arbetsdag `offset` arbetsdagar från idag (kan vara negativt).
+function resolveWorkingDate(offset) {
+  const idx = Math.max(0, Math.min(WORKING_DAYS.length - 1, TODAY_INDEX + offset));
+  return WORKING_DAYS[idx];
 }
 
 // Enkel deterministisk pseudo-slumpgenerator så att exempeldatan ser
@@ -208,46 +235,45 @@ function makeSlot(category) {
     : { startTime: pick(AFTERNOON_STARTS), endTime: pick(AFTERNOON_ENDS) };
 }
 
-const SCHEDULE_OFFSET_MIN = -6;
-const SCHEDULE_OFFSET_MAX = 13;
-
-// Hittar en dag och tid för `person` som inte krockar med det som redan är
-// inbokat (varken de fasta HERO/CLUSTER-uppdragen eller tidigare
-// slumpmässigt schemalagda uppdrag).
+// Hittar en arbetsdag och tid för `person` som inte krockar med det som
+// redan är inbokat (varken de fasta HERO/CLUSTER-uppdragen eller tidigare
+// slumpmässigt schemalagda uppdrag). Väljer bara bland faktiska
+// arbetsdagar (WORKING_DAYS) – aldrig helg eller röd dag.
 function scheduleMission(person, category, usedByPersonDate) {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const offset = SCHEDULE_OFFSET_MIN + Math.floor(rng() * (SCHEDULE_OFFSET_MAX - SCHEDULE_OFFSET_MIN + 1));
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const date = pick(WORKING_DAYS);
     const slot = makeSlot(category);
-    const key = `${person}|${offset}`;
+    const key = `${person}|${date}`;
     const existing = usedByPersonDate[key] || [];
     const conflict = existing.some((e) => timesOverlap(e.startTime, e.endTime, slot.startTime, slot.endTime));
     if (!conflict) {
       usedByPersonDate[key] = [...existing, slot];
-      return { dateOffset: offset, ...slot };
+      return { date, ...slot };
     }
   }
-  for (let offset = SCHEDULE_OFFSET_MIN; offset <= SCHEDULE_OFFSET_MAX; offset++) {
+  for (const date of WORKING_DAYS) {
     const slot = makeSlot(category);
-    const key = `${person}|${offset}`;
+    const key = `${person}|${date}`;
     const existing = usedByPersonDate[key] || [];
     const conflict = existing.some((e) => timesOverlap(e.startTime, e.endTime, slot.startTime, slot.endTime));
     if (!conflict) {
       usedByPersonDate[key] = [...existing, slot];
-      return { dateOffset: offset, ...slot };
+      return { date, ...slot };
     }
   }
   throw new Error('Kunde inte schemalägga exempeluppdrag utan krock.');
 }
 
-function statusForOffset(offset) {
-  if (offset < 0) return 'Klart';
-  if (offset === 0) return rng() < 0.6 ? 'Pågående' : 'Planerat';
+function statusForDate(dateStr) {
+  const todayStr = toIsoDate(new Date());
+  if (dateStr < todayStr) return 'Klart';
+  if (dateStr === todayStr) return rng() < 0.6 ? 'Pågående' : 'Planerat';
   return 'Planerat';
 }
 
 // Bygger ytterligare 18 fiktiva uppdrag runt Hässleholm, Kristianstad och
 // Klippan (utöver de två i CLUSTER_MISSIONS), utspridda över ungefär tre
-// veckor med både förflutna, dagens och kommande datum.
+// veckor med både förflutna, dagens och kommande arbetsdagar.
 function buildGeneratedMissions(usedByPersonDate) {
   const missions = [];
   for (let i = 0; i < 18; i++) {
@@ -256,16 +282,16 @@ function buildGeneratedMissions(usedByPersonDate) {
     const street = pick(STREETS[town.name]);
     const responsible = i % 2 === 0 ? 'Ove' : 'Bertil';
     const coords = jitterAround(town, 0.09);
-    const { dateOffset, startTime, endTime } = scheduleMission(responsible, DURATION_CATEGORY[type], usedByPersonDate);
+    const { date, startTime, endTime } = scheduleMission(responsible, DURATION_CATEGORY[type], usedByPersonDate);
 
     missions.push({
       ...coords,
       type,
       title: `${type} – ${street}, ${town.name}`,
       description: `${TYPE_DESCRIPTIONS[type]} Plats: ${street} i ${town.name}-området.`,
-      status: statusForOffset(dateOffset),
+      status: statusForDate(date),
       responsible,
-      dateOffset,
+      date,
       startTime,
       endTime,
       notes: pick(NOTE_POOL),
@@ -274,19 +300,26 @@ function buildGeneratedMissions(usedByPersonDate) {
   return missions;
 }
 
+// Använder den handskrivna statusen bara om uppdraget faktiskt landar på
+// dagens datum efter helg/röd dag-justering – annars härleds status från
+// om den slutgiltiga arbetsdagen ligger i dåtid eller framtid.
+function resolveStatus(explicitStatus, date) {
+  const todayStr = toIsoDate(new Date());
+  return date === todayStr ? explicitStatus : statusForDate(date);
+}
+
 export function buildSeedMissions() {
+  const heroResolved = HERO_MISSIONS.map((m) => ({ ...m, date: resolveWorkingDate(m.dateOffset) }));
+  const clusterResolved = CLUSTER_MISSIONS.map((m) => ({ ...m, date: resolveWorkingDate(m.dateOffset) }));
+
   const usedByPersonDate = {};
-  for (const m of HERO_MISSIONS) {
-    const key = `${m.responsible}|${m.dateOffset}`;
-    usedByPersonDate[key] = [...(usedByPersonDate[key] || []), { startTime: m.startTime, endTime: m.endTime }];
-  }
-  for (const m of CLUSTER_MISSIONS) {
-    const key = `${m.responsible}|${m.dateOffset}`;
+  for (const m of [...heroResolved, ...clusterResolved]) {
+    const key = `${m.responsible}|${m.date}`;
     usedByPersonDate[key] = [...(usedByPersonDate[key] || []), { startTime: m.startTime, endTime: m.endTime }];
   }
 
   const generated = buildGeneratedMissions(usedByPersonDate);
-  const all = [...HERO_MISSIONS, ...CLUSTER_MISSIONS, ...generated];
+  const all = [...heroResolved, ...clusterResolved, ...generated];
 
   return all.map((m, i) => ({
     id: `mission-${i + 1}`,
@@ -296,9 +329,9 @@ export function buildSeedMissions() {
     lat: m.lat,
     lon: m.lon,
     address: null,
-    status: m.status,
+    status: resolveStatus(m.status, m.date),
     responsible: m.responsible,
-    date: todayPlus(m.dateOffset),
+    date: m.date,
     startTime: m.startTime,
     endTime: m.endTime,
     notes: m.notes,

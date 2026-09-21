@@ -26,7 +26,6 @@ export default function Missions() {
     const mission = {
       ...form,
       id: `mission-${Date.now()}`,
-      address: null,
       machineIds: [],
       files: [],
       createdAt: new Date().toISOString(),

@@ -1,13 +1,18 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import MissionCard from '../components/Missions/MissionCard.jsx';
 import PersonRouteSchedule from '../components/Dashboard/PersonRouteSchedule.jsx';
-import { MACHINE_TYPE_ICONS, USERS } from '../lib/constants.js';
+import MissionForm from '../components/Missions/MissionForm.jsx';
+import Modal from '../components/common/Modal.jsx';
+import { MACHINE_TYPE_ICONS, STATUS_COLORS, USERS } from '../lib/constants.js';
 import { isToday, todayIso, formatDateLong } from '../lib/dateUtils.js';
 import { findPersonConflicts } from '../lib/conflicts.js';
 
 export default function Dashboard() {
-  const { missions, machines, office, personView } = useApp();
+  const { missions, machines, office, personView, saveMission } = useApp();
+  const navigate = useNavigate();
+  const [showForm, setShowForm] = useState(false);
 
   const todaysMissions = missions
     .filter((m) => isToday(m.date))
@@ -25,6 +30,19 @@ export default function Dashboard() {
 
   const personConflicts = findPersonConflicts(todaysMissions);
 
+  async function handleCreate(form) {
+    const mission = {
+      ...form,
+      id: `mission-${Date.now()}`,
+      machineIds: [],
+      files: [],
+      createdAt: new Date().toISOString(),
+    };
+    await saveMission(mission);
+    setShowForm(false);
+    navigate(`/uppdrag/${mission.id}`);
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -34,7 +52,9 @@ export default function Dashboard() {
             {formatDateLong(todayIso())} · {personView === 'Alla' ? 'Bertil & Ove' : `Vy: ${personView}`}
           </p>
         </div>
-        <Link to="/uppdrag" className="btn btn-primary">Alla uppdrag</Link>
+        <button type="button" className="btn btn-primary" onClick={() => setShowForm(true)}>
+          + Lägg till nytt uppdrag
+        </button>
       </div>
 
       <section className="stat-row">
@@ -42,12 +62,12 @@ export default function Dashboard() {
           <div className="stat-value">{visibleMissions.length}</div>
           <div className="stat-label">Uppdrag idag</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-value">{statusCounts['Pågående'] || 0}</div>
+        <div className="stat-card" style={{ '--stat-color': STATUS_COLORS['Pågående'] }}>
+          <div className="stat-value stat-value-colored">{statusCounts['Pågående'] || 0}</div>
           <div className="stat-label">Pågående</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-value">{statusCounts['Klart'] || 0}</div>
+        <div className="stat-card" style={{ '--stat-color': STATUS_COLORS['Klart'] }}>
+          <div className="stat-value stat-value-colored">{statusCounts['Klart'] || 0}</div>
           <div className="stat-label">Klara idag</div>
         </div>
         <div className="stat-card">
@@ -104,6 +124,19 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
+
+      {showForm && (
+        <Modal title="Nytt uppdrag" onClose={() => setShowForm(false)}>
+          <MissionForm
+            onCancel={() => setShowForm(false)}
+            onSubmit={handleCreate}
+            submitLabel="Skapa uppdrag"
+            missions={missions}
+            office={office}
+            initial={personView === 'Alla' ? undefined : { responsible: personView }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

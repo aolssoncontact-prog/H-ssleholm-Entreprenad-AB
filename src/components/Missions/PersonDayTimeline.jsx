@@ -1,4 +1,5 @@
 import { MISSION_TYPE_ICONS, WORKDAY_START, WORKDAY_END } from '../../lib/constants.js';
+import { nonWorkingDayReason } from '../../lib/holidays.js';
 
 function toMinutes(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
@@ -21,6 +22,7 @@ export default function PersonDayTimeline({ person, date, missions, excludeId, c
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   const candidateValid = candidate && candidate.startTime && candidate.endTime && candidate.startTime < candidate.endTime;
+  const dateIssue = date ? nonWorkingDayReason(date) : null;
 
   return (
     <div className="day-timeline">
@@ -28,32 +30,38 @@ export default function PersonDayTimeline({ person, date, missions, excludeId, c
         <span>{person || 'Välj ansvarig'} – {date || 'välj datum'}</span>
         <span>{WORKDAY_START}–{WORKDAY_END}</span>
       </div>
-      <div className="day-timeline-track">
-        {dayMissions.map((m) => (
-          <div
-            key={m.id}
-            className="day-timeline-block"
-            style={{
-              left: `${toPercent(m.startTime, startMin, totalMin)}%`,
-              width: `${Math.max(1.5, toPercent(m.endTime, startMin, totalMin) - toPercent(m.startTime, startMin, totalMin))}%`,
-            }}
-            title={`${m.title} (${m.startTime}–${m.endTime})`}
-          >
-            <span aria-hidden="true">{MISSION_TYPE_ICONS[m.type] || '📍'}</span>
+      {dateIssue ? (
+        <div className="day-timeline-closed">🚫 {person || 'Personen'} jobbar inte denna dag ({dateIssue}).</div>
+      ) : (
+        <>
+          <div className="day-timeline-track">
+            {dayMissions.map((m) => (
+              <div
+                key={m.id}
+                className="day-timeline-block"
+                style={{
+                  left: `${toPercent(m.startTime, startMin, totalMin)}%`,
+                  width: `${Math.max(1.5, toPercent(m.endTime, startMin, totalMin) - toPercent(m.startTime, startMin, totalMin))}%`,
+                }}
+                title={`${m.title} (${m.startTime}–${m.endTime})`}
+              >
+                <span aria-hidden="true">{MISSION_TYPE_ICONS[m.type] || '📍'}</span>
+              </div>
+            ))}
+            {candidateValid && (
+              <div
+                className={'day-timeline-candidate' + (candidate.status === 'blocked' ? ' blocked' : '') + (candidate.status === 'ok' ? ' ok' : '')}
+                style={{
+                  left: `${toPercent(candidate.startTime, startMin, totalMin)}%`,
+                  width: `${Math.max(1.5, toPercent(candidate.endTime, startMin, totalMin) - toPercent(candidate.startTime, startMin, totalMin))}%`,
+                }}
+                title={`${candidate.startTime}–${candidate.endTime} (nytt uppdrag)`}
+              />
+            )}
           </div>
-        ))}
-        {candidateValid && (
-          <div
-            className={'day-timeline-candidate' + (candidate.status === 'blocked' ? ' blocked' : '') + (candidate.status === 'ok' ? ' ok' : '')}
-            style={{
-              left: `${toPercent(candidate.startTime, startMin, totalMin)}%`,
-              width: `${Math.max(1.5, toPercent(candidate.endTime, startMin, totalMin) - toPercent(candidate.startTime, startMin, totalMin))}%`,
-            }}
-            title={`${candidate.startTime}–${candidate.endTime} (nytt uppdrag)`}
-          />
-        )}
-      </div>
-      {dayMissions.length === 0 && <p className="day-timeline-empty">Inga andra uppdrag bokade den här dagen.</p>}
+          {dayMissions.length === 0 && <p className="day-timeline-empty">Inga andra uppdrag bokade den här dagen.</p>}
+        </>
+      )}
     </div>
   );
 }

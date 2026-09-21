@@ -116,3 +116,16 @@ export async function reverseGeocode(lat, lon) {
   if (!feature) return null;
   return feature.properties?.label || null;
 }
+
+// Hämtar upp till `size` adressförslag medan användaren skriver.
+// Returnerar [{ label, lat, lon }, ...].
+export async function searchAddressSuggestions(text, size = 5) {
+  if (!text || text.trim().length < 3) return [];
+  const data = await getJson(
+    `/api/geocode?text=${encodeURIComponent(text)}&autocomplete=1&size=${size}`
+  );
+  return (data.features || []).map((feature) => {
+    const [lon, lat] = feature.geometry.coordinates;
+    return { label: feature.properties?.label || text, lat, lon };
+  });
+}

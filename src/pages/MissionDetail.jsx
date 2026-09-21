@@ -83,7 +83,7 @@ export default function MissionDetail() {
   }
 
   async function handleUpdate(form) {
-    await saveMission({ ...mission, ...form, lat: Number(form.lat), lon: Number(form.lon), address: null });
+    await saveMission({ ...mission, ...form });
     setEditing(false);
   }
 
@@ -268,7 +268,7 @@ export default function MissionDetail() {
       {editing && (
         <Modal title="Redigera uppdrag" onClose={() => setEditing(false)}>
           <MissionForm
-            initial={{ ...mission, lat: String(mission.lat), lon: String(mission.lon) }}
+            initial={mission}
             onCancel={() => setEditing(false)}
             onSubmit={handleUpdate}
             submitLabel="Spara ändringar"
