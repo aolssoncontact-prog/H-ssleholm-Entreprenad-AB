@@ -213,6 +213,60 @@ const CLUSTER_MISSIONS = [
   },
 ];
 
+// Fyra extra uppdrag för idag (dateOffset 0) – två vardera för Bertil och
+// Ove utöver morgonuppdragen ovan – så att dagens vy har gott om innehåll
+// att visa upp direkt.
+const TODAY_EXTRA_MISSIONS = [
+  {
+    ...jitterAround(TOWNS[1], 0.06),
+    type: 'Plattsättning',
+    title: 'Plattsättning av uteplats – Gamlegårdsvägen, Kristianstad',
+    description: TYPE_DESCRIPTIONS['Plattsättning'] + ' Plats: Gamlegårdsvägen i Kristianstad-området.',
+    status: 'Planerat',
+    responsible: 'Bertil',
+    dateOffset: 0,
+    startTime: '10:30',
+    endTime: '13:00',
+    notes: 'Andra uppdraget för dagen efter förmiddagens schaktarbete.',
+  },
+  {
+    ...jitterAround(TOWNS[0], 0.07),
+    type: 'Hyvling av väg',
+    title: 'Hyvling av grusväg – Sjöuddevägen, Hässleholm',
+    description: TYPE_DESCRIPTIONS['Hyvling av väg'] + ' Plats: Sjöuddevägen i Hässleholm-området.',
+    status: 'Planerat',
+    responsible: 'Bertil',
+    dateOffset: 0,
+    startTime: '14:00',
+    endTime: '16:30',
+    notes: 'Tredje och sista stoppet för dagen.',
+  },
+  {
+    ...jitterAround(TOWNS[2], 0.06),
+    type: 'Schaktarbete',
+    title: 'Schaktarbete – Östra Ringvägen, Klippan',
+    description: TYPE_DESCRIPTIONS['Schaktarbete'] + ' Plats: Östra Ringvägen i Klippan-området.',
+    status: 'Planerat',
+    responsible: 'Ove',
+    dateOffset: 0,
+    startTime: '11:00',
+    endTime: '13:30',
+    notes: 'Andra uppdraget för dagen efter förmiddagens brunnsinstallation.',
+  },
+  {
+    ...jitterAround(TOWNS[1], 0.08),
+    type: 'Jordvärme',
+    title: 'Grävning för jordvärmeslingor – Rinkabyvägen, Kristianstad',
+    description: TYPE_DESCRIPTIONS['Jordvärme'] + ' Plats: Rinkabyvägen i Kristianstad-området.',
+    status: 'Planerat',
+    responsible: 'Ove',
+    dateOffset: 0,
+    startTime: '14:00',
+    endTime: '16:00',
+    notes: 'Tredje och sista stoppet för dagen – samordna med VVS-firma per telefon.',
+  },
+];
+
 const DURATION_CATEGORY = {
   'Schaktarbete': 'half',
   '3-kammarbrunn': 'half',
@@ -348,17 +402,18 @@ function resolveStatus(explicitStatus, date) {
 export function buildSeedMissions() {
   const heroResolved = HERO_MISSIONS.map((m) => ({ ...m, date: resolveWorkingDate(m.dateOffset) }));
   const clusterResolved = CLUSTER_MISSIONS.map((m) => ({ ...m, date: resolveWorkingDate(m.dateOffset) }));
+  const todayExtraResolved = TODAY_EXTRA_MISSIONS.map((m) => ({ ...m, date: resolveWorkingDate(m.dateOffset) }));
 
   const usedByPersonDate = {};
   const usedDaysByPerson = Object.fromEntries(USERS.map((u) => [u, []]));
-  for (const m of [...heroResolved, ...clusterResolved]) {
+  for (const m of [...heroResolved, ...clusterResolved, ...todayExtraResolved]) {
     const key = `${m.responsible}|${m.date}`;
     usedByPersonDate[key] = [...(usedByPersonDate[key] || []), { startTime: m.startTime, endTime: m.endTime }];
     if (!usedDaysByPerson[m.responsible].includes(m.date)) usedDaysByPerson[m.responsible].push(m.date);
   }
 
   const generated = buildGeneratedMissions(usedByPersonDate, usedDaysByPerson);
-  const all = [...heroResolved, ...clusterResolved, ...generated];
+  const all = [...heroResolved, ...clusterResolved, ...todayExtraResolved, ...generated];
 
   return all.map((m, i) => ({
     id: `mission-${i + 1}`,
